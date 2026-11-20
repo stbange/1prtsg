@@ -2,18 +2,32 @@ schema: spec-driven
 
 context: |
   Project: 1stPRTS (repository: 1prtsg) — an exclusively first-person Real-Time Strategy (RTS) game
-  where all buildings, vehicles, naval ships, aircraft, spacecraft, and space stations are realistically
-  huge, manned by simulated crew, and fully enterable and explorable.
+  set in a classic bold-color retro space-opera universe on true-scale spherical planets with real
+  orbital mechanics. All buildings, ground vehicles, naval ships, aircraft, spacecraft, and space
+  stations are realistically huge (1:1 human scale), manned by simulated crew, and fully enterable
+  and explorable.
+
+  Confirmed Design Pillars:
+  - Setting & Aesthetic: Classic bold-color retro space-opera 3D (bold faction liveries, energy shield
+    domes, plasma/beam/torpedo weapons, sleek angular starfighters & capital ships, optional voxels)
+  - Commander Stakes: Hardcore Ironman default (Commander death ends the match immediately; supported
+    by personal exo-suit, shielded bridges, and physical escape pods/shuttles; Lua-moddable)
+  - Planetary & Orbital Scale: Full true-scale spherical planet (64-bit cube-sphere CDLOD terrain &
+    curved ocean, ENU surface frames, real central-body gravity & Keplerian orbital mechanics,
+    atmospheric drag & shielded re-entry, 3D Planetary & Orbital Holo-Globe in War Rooms)
+  - Multiplayer Scope: Single-player first (Skirmish vs. Lua AI, Sandbox, Scenarios) on a deterministic
+    fixed-timestep core so LAN/WebRTC multiplayer can be added cleanly later
+  - Crew Visual Style: Hybrid — low-poly retro 3D models up close inside interiors and in WebXR,
+    smoothly transitioning to 8-/16-directional pixel sprites at medium/far battlefield distances
 
   Core Technical Stack & Constraints:
   - Core Engine: C11, SDL3, OpenGL (unified OpenGL 3.3 Core / OpenGL ES 3.0 / WebGL 2.0 shader subset)
   - Scripted Gameplay Layer: Embedded Lua 5.4 in external editable scripts/ and mods/ folders
-  - Retro 3D Graphics: Low-poly 3D objects, directional 2.5D/3D sprites, and optional chunked voxels
   - Target Platforms: Windows, Linux, macOS, Web (Emscripten/WASM), WebXR (6-DOF VR), and Mobile Web
     with automatic runtime switching to touch controls
-  - External Assets Policy: Assets (models, textures, sprites, voxels, shaders, audio, maps, Lua scripts)
-    MUST NOT be baked into executables or WASM binaries; they reside in sibling folders alongside the binary
-    and are loaded through the Virtual File System (VFS) with layered mod support
+  - External Assets Policy: Assets (models, textures, sprites, voxels, shaders, audio, planets, Lua
+    scripts) MUST NOT be baked into executables or WASM binaries; they reside in sibling folders
+    alongside the binary and are loaded via the Virtual File System (VFS) with layered mod support
   - Quality Gates:
     * OpenSpec spec-driven development for every capability and change
     * Unit test coverage MUST be >= 95% (C via gcov/llvm-cov + Lua via debug hook coverage)
@@ -38,11 +52,11 @@ rules:
     - Preserve strict separation between engine capabilities and moddable Lua game rules
   design:
     - Document dependency-injection seams (vtable interfaces) that enable >= 95% unit test coverage without GPU/OS hardware
-    - Address 64-bit world precision and nested local interior reference frames whenever spatial behavior is touched
+    - Address 64-bit geocentric precision, spherical ENU surface frames, orbital mechanics, and nested local interior frames whenever spatial behavior is touched
     - Document VFS asset resolution paths and hot-reload behavior for any new asset or script type
   tasks:
     - Every implementation task group MUST include corresponding unit tests targeting >= 95% coverage for touched modules
-    - Include at least one automated game test scenario task whenever player-facing, AI, interior, or input behavior changes
+    - Include at least one automated game test scenario task whenever player-facing, AI, orbital, interior, or input behavior changes
     - Verify both native build/tests and Emscripten/Web compatibility where applicable
 
 operations:

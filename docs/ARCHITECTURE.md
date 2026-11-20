@@ -2,6 +2,7 @@
 
 > **Language:** C11 (Core Engine) + Lua 5.4 (Scripted Gameplay Layer)  
 > **Platform & Graphics:** SDL3 + OpenGL (Unified OpenGL 3.3 Core / OpenGL ES 3.0 / WebGL 2.0) + WebXR  
+> **World Model:** True-Scale Spherical Planet (Cube-Sphere CDLOD) + Keplerian/N-Body Orbital Mechanics + Nested Interior Frames  
 > **Quality Gates:** OpenSpec Spec-Driven Development · >= 95% Unit Test Coverage · Automated End-to-End Game Tests  
 > **Asset Policy:** 100% External Assets & Scripts beside the binary (zero baked assets)
 
@@ -9,11 +10,11 @@
 
 ## 1. Architectural Tenets
 
-1. **Strict Engine / Gameplay Separation:** The C11 core engine knows *how* to simulate nested 3D interiors, render retro 3D scenes, route inputs, mix spatial audio, and load layered VFS assets — it contains **zero hardcoded factions, units, tech trees, weapons, or missions**. All game rules live in external Lua 5.4 scripts.
-2. **Single Portable Rendering Core:** One OpenGL shader/pipeline core targets **OpenGL 3.3 Core** (Windows, Linux, macOS) and **OpenGL ES 3.0 / WebGL 2.0** (Linux GLES, Emscripten Web, WebXR) via a thin GLSL preamble header — avoiding fragmented per-platform renderers while staying cleanly behind a C vtable (`GfxBackend`) for future backends and headless testing.
-3. **Multi-Scale Spatial Correctness by Construction:** 64-bit double-precision world coordinates (`Vec3d`), camera-relative floating-origin rendering, and **nested local reference frames** allow a Commander to walk stably inside a moving aircraft carrier or rotating orbital shipyard at hundreds of meters per second without floating-point jitter or collision tunneling.
-4. **Zero Baked Assets Everywhere:** Desktop reads sibling directories relative to `SDL_GetBasePath()`. Emscripten Web loads loose sibling files via relative HTTP paths mounted into the runtime VFS — never embedding game assets into `.wasm` or opaque baked blobs.
-5. **Deterministic & >= 95% Testable by Design:** Fixed-timestep simulation plus dependency-injected C vtables (`PlatformAPI`, `GfxBackend`, `AudioBackend`, `XrBackend`, `FsBackend`) enable deterministic headless game runs and >= 95% line/branch coverage across both C and Lua without requiring a physical GPU or headset.
+1. **Strict Engine / Gameplay Separation:** The C11 core engine handles true-scale spherical planetary geometry, orbital physics, nested 3D interior frames, retro 3D rendering, audio, input, and layered VFS asset loading — it contains **zero hardcoded factions, units, tech trees, weapons, or missions**. All game content and rules (including Hardcore Ironman match rules) live in external Lua 5.4 scripts.
+2. **Single Portable Rendering Core:** One OpenGL shader/pipeline core targets **OpenGL 3.3 Core** (Windows, Linux, macOS) and **OpenGL ES 3.0 / WebGL 2.0** (Linux GLES, Emscripten Web, WebXR) via a thin GLSL preamble header — kept behind an injected C vtable (`GfxBackend`) for headless testing and future backends.
+3. **True-Scale Planetary-to-Orbital Precision by Construction:** Geocentric 64-bit double-precision coordinates (`Vec3d`), camera-relative floating-origin rendering, local East-North-Up (ENU) surface tangent frames, and **nested local interior reference frames** guarantee sub-millimeter stability from 1m indoor consoles up to 36,000+ km geosynchronous orbits with zero floating-point jitter.
+4. **Zero Baked Assets Everywhere:** Desktop mounts sibling directories relative to `SDL_GetBasePath()`. Emscripten Web fetches loose sibling files over relative HTTP into the runtime VFS — never embedding game assets into `.wasm` or monolithic baked blobs.
+5. **Deterministic Single-Player Core & >= 95% Testable by Design:** Fixed-timestep simulation plus dependency-injected C vtables (`PlatformAPI`, `GfxBackend`, `AudioBackend`, `XrBackend`, `FsBackend`) keep the door cleanly open for future multiplayer while guaranteeing deterministic headless game tests and >= 95% C + Lua unit test coverage.
 
 ---
 
@@ -31,10 +32,11 @@ flowchart TB
     subgraph Engine["C11 Core Engine (MIT)"]
         VFS["Virtual File System (VFS)\nLayered Mounts + Path Sandbox + Hot-Reload"]
         SIM["Deterministic Fixed-Timestep Core\nECS Pools, Command Queue, Event Bus"]
-        SPATIAL["Multi-Scale Spatial & Interior Engine\n64-bit World Frames, Nested Craft Frames,\nPortal Transitions, Deck Collision, Sim LOD"]
+        PLANET["Planetary & Orbital Physics Engine\n64-bit Cube-Sphere CDLOD, Ocean Sphere,\nKeplerian/Gravity Integrator, Atmosphere & Drag"]
+        SPATIAL["Nested Interior Frame Engine\nENU Surface Frames, Craft/Station Frames,\nPortal Transitions, Deck Collision, Sim LOD"]
         LUAVM["Sandboxed Lua 5.4 Runtime\nengine.* C Bindings + Coverage Hook"]
-        RENDER["Retro 3D Renderer\nMeshes + Directional Sprites +\nOptional Voxel Mesher + Diegetic RTT"]
-        AUDIO["Spatial Audio Mixer\n3D Attenuation + Interior Acoustics"]
+        RENDER["Retro Space-Opera 3D Renderer\nMeshes + Hybrid Crew Sprites + Shield/Plasma FX +\nOptional Voxels + Diegetic RTT & Holo-Globe"]
+        AUDIO["Spatial Audio Mixer\n3D Attenuation + Interior & Vacuum Acoustics"]
         INPUT["Unified Input & Ergonomics Router\nKB+M / Gamepad / Auto-Touch / WebXR"]
     end
 
@@ -55,9 +57,12 @@ flowchart TB
     VFS --> AUDIO
 
     LUAVM <--> SIM
+    SIM <--> PLANET
     SIM <--> SPATIAL
+    PLANET <--> SPATIAL
     INPUT --> SIM
     INPUT --> LUAVM
+    PLANET --> RENDER
     SPATIAL --> RENDER
     SPATIAL --> AUDIO
 
@@ -76,146 +81,151 @@ flowchart TB
 
 | Concern | C11 Core Engine (`src/`) | Lua 5.4 Layer (`scripts/`, `mods/`) |
 | :--- | :--- | :--- |
-| **Main Loop & Timing** | Fixed-timestep accumulator (e.g., 60 Hz sim, unlocked render), frame pacing (`emscripten_set_main_loop` / XR loop) | Per-tick (`on_tick(dt)`), per-event (`on_event`), and UI render callbacks |
-| **Spatial & Physics** | 64-bit world transforms, nested interior local frames, portal handoff, AABB/OBB/deck collision, raycasting, navmesh/grid pathfinding primitives | Unit speed/mass/turn stats, interior deck blueprints, doorway/airlock/console links, gravity overrides |
-| **Rendering** | OpenGL/WebGL2 state, camera-relative floating origin, mesh/sprite/voxel batching, diegetic RTT consoles, WebXR stereo viewports | Scene/unit visual definitions (model, sprite sheet, voxel chunk, shader, faction tint), diegetic UI drawing commands |
-| **RTS Command & AI** | Fast spatial queries (nearby units, LOS raycasts, sensor visibility grid), order queue transport, deterministic RNG | Factions, tech trees, build queues, economy/logistics rules, weapon/damage formulas, crew role FSMs, enemy AI commander strategy |
-| **UI & HUD** | Retro bitmap text/vector/quad drawing, ray-to-surface UV projection for 3D Holo-Tables & CRT consoles, Touch HUD layout primitives | Wrist-Pad pages, Holo-Table overlays, Bridge/Factory console screens, Command Wheel options, mission briefings |
-| **Assets & Modding** | VFS layered mount resolution, asset parsing/caching, hot-reload watcher, path-traversal sandboxing | `mod.json` hooks, unit/asset registration, mutating or extending base Lua tables |
-| **Testing** | Hardware mocks, C unit test suite, coverage instrumentation, headless CLI runner (`--headless --test-script`) | Lua unit tests, automated end-to-end game test scripts injecting synthetic inputs and asserting world state |
+| **Main Loop & Timing** | Fixed-timestep accumulator (60 Hz sim, configurable time-compression multiplier, unlocked render), `emscripten_set_main_loop` / XR loop | Per-tick (`on_tick(dt)`), per-event (`on_event`), match-end rules (Hardcore Ironman Commander death check), UI draw callbacks |
+| **Planetary & Orbital** | 64-bit cube-sphere terrain/ocean quadtree, radial gravity, atmospheric density & re-entry heat model, Keplerian orbital elements & burn solver | Planet definitions (radius, mass, atmosphere, biome/height seeds), ship thrust/ISP/shield specs, astrogator AI order planner |
+| **Interiors & Spatial** | Nested local reference frames, ENU surface tangent frames, portal/airlock transitions, AABB/OBB/deck collision, raycasting, navgrid pathfinding | Interior deck blueprints, room/door/airlock/escape-pod/console links, artificial gravity & zero-G room definitions |
+| **Rendering** | OpenGL/WebGL2 pipeline, floating-origin matrices, mesh/sprite/voxel batching, hybrid 3D/sprite crew LOD, shield dome & plasma shaders, RTT consoles, 3D Holo-Globe, WebXR stereo | Faction liveries, unit visual bindings (mesh, sprite atlas, voxel volume, shield parameters), diegetic CRT & Holo-Globe overlays |
+| **RTS Command & AI** | Fast spatial queries, LOS & orbital horizon/visibility checks, sensor grid, deterministic PRNG | Factions, tech trees, build queues, economy/logistics, weapon/shield/subsystem damage math, crew role FSMs, enemy AI commanders |
+| **Assets & Modding** | VFS layered mounts, external asset decoders, path-traversal sandbox, hot-reload watcher | `mod.json` registration, overriding/extending unit tables, missions, and rules |
+| **Testing** | Hardware mock vtables, C unit tests, `gcov`/`llvm-cov` hooks, headless CLI runner (`--headless --test-script`) | Lua unit tests, Lua line-coverage verification, automated end-to-end game test scenarios |
 
 ### Sandboxed Lua Engine API (`engine.*`)
 
-Standard unsafe Lua libraries (`io`, `os.execute`, `package.loadlib`, raw `dofile`) are removed or replaced with VFS-backed equivalents (`require` resolves strictly within mounted `mods/` -> `scripts/`).
+Unsafe host libraries (`io`, `os.execute`, `package.loadlib`, raw `dofile`) are stripped; `require` resolves strictly through the VFS (`mods/` -> `scripts/`).
 
-Planned core Lua namespaces exposed by C:
-- `engine.vfs` — Safe read-only asset/script inspection, JSON/config loading, mod list query
-- `engine.world` — Spawn/destroy entities, 64-bit sector transforms, raycasts, spatial radius queries, fog-of-war / sensor grid updates
-- `engine.interior` — Register deck layouts, rooms, portals/airlocks, console interaction volumes, gravity zones, entity frame transfers
-- `engine.entity` — Get/set components (transform, velocity, hull/subsystems, crew slots, cargo, renderable, faction, AI blackboard)
-- `engine.order` — Push/query structured RTS orders (move, attack, build, board, dock, patrol, repair, pickup commander)
-- `engine.input` — Query unified intent actions/axes, active input mode (`desktop`, `gamepad`, `touch`, `webxr`), ray hits on consoles/holo-tables
-- `engine.ui` — Immediate-mode retro vector/sprite/text draw calls targeting HUD, Wrist-Pad RTT, CRT Console RTT, or 3D Holo-Table projection
-- `engine.audio` — Play 3D/interior-zone sounds, set acoustic zone properties, trigger radio comms streams
-- `engine.xr` — Query WebXR session active state, head/hand poses, controller trigger/ray hits, comfort settings
-- `engine.sim` — Deterministic PRNG (`engine.sim.rand()`), tick counter, serialization hooks, time scale
-- `engine.test` — Active only in test mode: inject synthetic input actions/touch/XR rays, fast-forward `N` deterministic ticks, capture state/frame assertions
+Planned C-to-Lua namespaces:
+- `engine.vfs` — Safe asset/script reads, JSON/config parsing, active mod listing
+- `engine.planet` — Query planetary radius, surface height & ocean depth at `(lat, lon)` or 3D unit vector, radial gravity vector, atmospheric density, ENU tangent basis
+- `engine.orbit` — Compute Keplerian orbital elements `(a, e, i, Omega, omega, nu)` from state vectors `(r, v)`, sample orbit ellipse points for the 3D Holo-Globe, solve Hohmann / rendezvous burn deltas
+- `engine.world` — Spawn/destroy entities, 64-bit geocentric transforms, raycasts, spatial radius queries, horizon/sensor visibility queries
+- `engine.interior` — Register deck rooms, portals/airlocks, escape pods, console volumes, gravity zones, atomic entity frame reparenting
+- `engine.entity` — Access components (transform, rigidbody, shields, localized hull subsystems, crew roster, cargo, renderable, faction)
+- `engine.order` — Dispatch & inspect RTS orders (surface move, naval waypoint, orbital transfer, rendezvous, de-orbit/land, attack, build, board, dock, evacuate)
+- `engine.input` — Query unified intent stream, active input mode (`desktop`, `gamepad`, `touch`, `webxr`), ray hits on consoles & Holo-Globes
+- `engine.ui` — Immediate-mode retro vector/sprite/text & 3D Holo-Globe projection primitives
+- `engine.audio` — Spatial & interior/vacuum acoustic playback
+- `engine.xr` — WebXR session state, head/hand poses, controller rays, comfort settings
+- `engine.sim` — Deterministic PRNG, tick counter, time-compression scale, state snapshots
+- `engine.test` — Test-only synthetic input injection, deterministic tick stepping, assertion & state inspection helpers
 
 ---
 
-## 4. Multi-Scale World & Nested Interior Frame Architecture
+## 4. True-Scale Spherical Planet, Orbital Mechanics & Nested Interior Architecture
 
-Supporting enterable vehicles, 320m carriers, 650m spacecraft, and 2km orbital stations in one continuous theater requires solving **floating-point precision**, **moving-interior physics**, and **RTS entity scale** cleanly in C.
+### 4.1 64-Bit Geocentric Coordinates + Camera-Relative Floating Origin
+- The world origin `(0, 0, 0)` sits at the **center of the active planet** in 64-bit double precision (`Vec3d`).
+- At an Earth-scale radius of 6,371 km ($6.371 \times 10^6$ m) and geosynchronous orbit of 42,164 km ($4.2164 \times 10^7$ m), IEEE-754 `double` retains sub-micrometer precision everywhere in the planetary system.
+- Every render frame, visible transforms are computed relative to the camera's 64-bit world position (`obj_world_d - cam_world_d`) and narrowed to 32-bit `float` (`Mat4f`) only for GPU uniform upload.
+- Result: zero jitter whether inspecting a bolt on a cockpit dashboard, steering a 340m carrier across a curved ocean, or docking at an orbital shipyard 400 km above the surface.
 
-### 4.1 64-Bit World Precision + Camera-Relative Floating Origin
-- All world-space positions are stored as `Vec3d` (`double x, y, z;` — sub-millimeter precision across hundreds of thousands of kilometers).
-- Each render frame, the renderer computes every visible object's model matrix relative to the active camera's 64-bit world origin (`obj_world_d - cam_world_d`), casting to 32-bit `float` (`Mat4f`) **only at the final GPU uniform upload**.
-- Result: zero vertex wobble, zero z-fighting jitter on orbit, and crisp close-up interior rendering everywhere.
+### 4.2 Cube-Sphere Planetary Terrain & Ocean (CDLOD)
+- **Cube-Sphere Projection:** The planetary surface is parameterized as 6 cube faces projected onto the sphere (`spherified cube` mapping to minimize distortion and eliminate polar singularities).
+- **Quadtree CDLOD:** Each face subdivides dynamically based on camera altitude — rendering coarse planetary continents from orbit and 1–2m terrain cells right under the Commander's boots, with stitched skirt/morph transitions to prevent T-junction cracks.
+- **Ocean Sphere:** A matching spherical water mesh at radius $R_{\text{sea}}$ renders curved retro oceans supporting naval ships, submarines, and amphibious landings seamlessly.
+- **Local ENU Surface Frames:** Every planetary building, spaceport, and coastal dock anchors to an **East-North-Up (ENU)** tangent frame computed from its spherical surface normal so interiors remain perfectly level relative to local radial gravity.
 
-### 4.2 Nested Local Reference Frames (Zone Tree)
+### 4.3 Orbital Mechanics & Atmospheric Transition
+- **Gravity & Propagation:**
+  - Free-flying spacecraft and stations integrate real central-body gravity $\mathbf{a}_g = -\frac{\mu}{\|\mathbf{r}\|^3}\mathbf{r}$ using symplectic / Velocity-Verlet or RK4 integration (with optional Keplerian analytical rail propagation for non-thrusting background stations/satellites to preserve exact long-term orbital stability without drift!).
+  - **Keplerian Solver (`src/orbit/`):** Converts `(r, v)` <-> classical orbital elements `(a, e, i, Ω, ω, ν)` in pure C to render crisp glowing orbital tracks on the **3D Planetary Holo-Globe** and compute AI astrogator intercept/transfer burns.
+- **Exponential Atmosphere & Shielded Re-entry:**
+  - Atmospheric density $\rho(h) = \rho_0 e^{-h / H}$ smoothly drops from sea level to vacuum above the Kármán line.
+  - Controls aerodynamic lift/drag for starfighters and dropships, triggers retro plasma re-entry glow & thermal load on shields during high-velocity descent, and modulates exterior sound propagation (full sound in air -> muffled -> silent vacuum in orbit).
 
-Every enterable construct owns a `SpatialFrame` node in a strict tree:
+### 4.4 Nested Local Reference Frames (Zone Tree)
+
+Every enterable construct owns a `SpatialFrame` node in a strict hierarchy:
 
 ```mermaid
 flowchart TD
-    ROOT["Theater World Frame\n(64-bit Sector Origin, Planetary + Orbital Space)"]
-    HQ["Command HQ Bunker\n(Static Building Frame, 1g)"]
-    CARRIER["Fleet Carrier 'Vanguard'\n(Moving Naval Frame, 1g)"]
-    STATION["Orbital Shipyard Alpha\n(Rotating Orbital Frame, 0g Core / 0.8g Ring)"]
-    FRIGATE["Docked Frigate 'Aegis'\n(Child Frame inside Station Drydock)"]
-    DROPSHIP["Dropship 'Pelican-4'\n(Child Frame inside Carrier Hangar)"]
+    PLANET["Planetary Geocentric Frame\n(64-bit Origin at Planet Center, Radial Gravity)"]
+    CITADEL["Planetary Command Citadel\n(Static ENU Surface Frame, Local Down = Radial)"]
+    CARRIER["Naval Fleet Carrier 'Vanguard'\n(Curved-Ocean Surface Frame)"]
+    SHIPYARD["Orbital Shipyard Alpha\n(Keplerian Orbit Frame, 0g Docking Core + Rotating 0.8g Ring)"]
+    DREAD["Docked Dreadnought 'Solaris'\n(Child Frame inside Shipyard Drydock)"]
+    DROPSHIP["Dropship 'Valkyrie-2'\n(Child Frame inside Carrier Hangar)"]
     CMD["Commander & Crew\n(Simulated in Dropship Local Frame)"]
 
-    ROOT --> HQ
-    ROOT --> CARRIER
-    ROOT --> STATION
-    STATION --> FRIGATE
+    PLANET --> CITADEL
+    PLANET --> CARRIER
+    PLANET --> SHIPYARD
+    SHIPYARD --> DREAD
     CARRIER --> DROPSHIP
     DROPSHIP --> CMD
 ```
 
-- **Local Simulation:** When the Commander or crew walks inside `Dropship 'Pelican-4'` while it flies at 300 m/s or rests inside a pitching Aircraft Carrier, all character physics, footstep collision, doors, and ladders evaluate in **local frame coordinates** (tiny local numbers near `0, 0, 0`).
-- **Portal / Airlock Transitions:** Every ramp, blast door, hatch, and docking collar defines a **Transition Portal Volume** linking parent and child frames. Crossing the portal atomically reparents the entity's transform and transforms its velocity + up-vector (e.g., smoothly transitioning from planetary gravity to spacecraft deck gravity or zero-G mag-boots).
-- **Interior–Exterior Visibility:** Each interior deck graph consists of convex rooms connected by portals (doors, windows, open hangar bays). Viewports and open bays render the live exterior scene through portal frustum clipping, while exterior views render visible interior rooms (e.g., lit bridge or open hangar bay) up to a configurable LOD distance.
-
-### 4.3 Two-Tier Interior Simulation LOD (Keeping RTS Scale Fast)
-
-To run dozens of huge manned vessels simultaneously on desktop and Web/Mobile:
-- **Tier A — Hydrated Physical Interior:** Active for the craft/building the Commander currently occupies, adjacent docked frames, and any craft currently undergoing active close-range boarding. Full interior geometry, individual crew pathfinding, physics, doors, consoles, and fire/repair visuals tick live.
-- **Tier B — Abstracted Interior Simulation:** Active for distant buildings, ships, and stations. Maintains exact crew roster counts by role, subsystem health, power allocation, hangar inventory, and repair/combat tick rates in lightweight structs. The instant the Commander approaches within hydration radius (or boards via shuttle), the interior **deterministically hydrates** all crew to their active stations with zero discontinuity!
+- **Local Simulation:** Character movement, deck collisions, ladders, turbolifts, and doors simulate strictly in the occupied construct's local frame — immune to 7.8 km/s orbital velocity or carrier pitch/roll!
+- **Portal / Airlock Transitions:** Crossing a ramp, hatch, or docking collar atomically transforms position, velocity, and gravity-up reference between parent and child frames (including smooth zero-G EVA / mag-boot switching on orbital hulls and rotating station rings).
+- **Two-Tier Interior Simulation LOD:**
+  - **Hydrated Interior:** Full physical rooms, crew pathfinding, doors, consoles, and damage/fire effects inside the Commander's occupied zone, docked neighbors, and active boarding zones.
+  - **Abstracted Interior:** Distant ships, stations, and bases track exact crew counts by role, shield/subsystem health, reactor output, and hangar manifests cheaply — deterministically hydrating all crew to their stations the moment the Commander approaches or boards.
 
 ---
 
 ## 5. External Asset & Mod Virtual File System (VFS)
 
-### Runtime Directory Structure (Beside Binary)
+### Runtime Directory Layout (Beside Binary / Web Root)
 
 ```text
 <app_root>/
 ├── 1prtsg (or 1prtsg.exe / index.html + 1prtsg.js + 1prtsg.wasm)
 ├── config/
-│   └── engine.cfg              # Graphics, audio, controls, active mod load order
+│   └── engine.cfg              # Graphics, audio, controls, active mod order
 ├── assets/                     # Base art/audio (CC BY 4.0) + shaders (MIT)
-│   ├── models/                 # Low-poly 3D meshes (.obj / compact JSON-or-bin mesh)
-│   ├── textures/               # Pixel-art PNGs + color palettes
-│   ├── sprites/                # Directional sprite sheets + atlas metadata (.json)
+│   ├── models/                 # Low-poly retro 3D meshes (.obj / compact mesh)
+│   ├── textures/               # Pixel-art PNGs + palettes
+│   ├── sprites/                # 8-/16-way crew & VFX sprite sheets + JSON atlases
 │   ├── voxels/                 # Optional voxel chunks/models (.vox / .vxl)
-│   ├── interiors/              # Modular room/deck/portal templates (.json / .lua)
+│   ├── interiors/              # Modular room/deck/portal blueprints
 │   ├── audio/                  # SFX & music (.ogg / .wav)
 │   ├── shaders/                # External GLSL shaders (MIT)
-│   ├── fonts/                  # Retro bitmap font atlases
-│   └── maps/                   # Theater heightmaps, sea levels, orbital layouts
+│   ├── fonts/                  # Retro bitmap fonts
+│   └── planets/                # Planet definitions, biome palettes, height seeds
 ├── scripts/                    # Base gameplay scripts (MIT Lua 5.4)
 │   ├── main.lua
 │   ├── factions/
 │   ├── units/                  # buildings/, vehicles/, ships/, aircraft/, spacecraft/, stations/
 │   ├── crew/
-│   ├── ai/
-│   ├── ui/
-│   ├── rules/
+│   ├── ai/                     # Strategic, tactical, and orbital astrogator AI
+│   ├── ui/                     # Wrist-Pad, CRT consoles, 3D Planetary Holo-Globe
+│   ├── rules/                  # Economy, combat/shields, Hardcore Ironman match rules
 │   ├── missions/
 │   └── tests/                  # Lua unit tests + automated game test scenarios
 └── mods/                       # User override packages
     └── example_mod/
-        ├── mod.json            # id, name, version, dependencies, license
+        ├── mod.json
         ├── assets/
         └── scripts/
 ```
 
-### Mount Priority & Security
-1. VFS resolves every logical path (e.g., `units/carrier.lua`, `textures/steel_hull.png`) in reverse priority order:
-   `mods/<last_enabled>/...` -> `mods/<first_enabled>/...` -> `scripts/` or `assets/`.
-2. **Path Sandboxing:** Rejects leading `/`, drive prefixes (`C:`), null bytes, and `..` traversal components. Every read stays strictly inside the mounted application/mod roots.
-3. **Desktop vs. Web (Zero Baked Assets):**
-   - **Desktop (Win/Linux/Mac):** Anchors mounts to `SDL_GetBasePath()` (with optional CLI override `--data-dir <path>` for development and CTest runs).
-   - **Web (Emscripten):** Serves `assets/`, `scripts/`, `mods/`, and `config/` as plain loose files beside `index.html` alongside a lightweight `manifest.json` index (generated or dynamically listed). On boot (and lazily per theater/mod), the VFS fetches external files over standard relative HTTP `fetch()` into the in-memory/IndexedDB Emscripten FS — **never compiling assets into `.wasm` or monolithic `--preload-file` blobs**, so anyone hosting the web build can directly edit a `.lua` script or `.png` texture on the server and refresh!
-4. **Hot-Reload:** A dev/modder command reloads modified Lua scripts, shaders, textures, and unit definitions at runtime without restarting the engine.
+### Mount Priority, Security & Web Delivery
+- **Layered Resolution:** `mods/<last_enabled>/...` -> `mods/<first_enabled>/...` -> `scripts/` or `assets/`.
+- **Path Sandbox:** Rejects leading `/`, drive letters, null bytes, and `..` traversal components.
+- **Desktop vs. Emscripten Web:** Desktop resolves relative to `SDL_GetBasePath()` (overridable via `--data-dir`). Emscripten Web fetches loose sibling files via relative HTTP `fetch()` indexed by an external `manifest.json` — **zero embedded assets in `.wasm` or monolithic `--preload-file` archives**, preserving direct server-side modding and asset editing.
+- **Hot-Reload:** Runtime reload command refreshes modified Lua scripts, shaders, textures, and unit definitions without restarting.
 
 ---
 
-## 6. Retro 3D Graphics Pipeline (SDL3 + OpenGL + WebXR)
+## 6. Retro Space-Opera 3D Graphics Pipeline (SDL3 + OpenGL + WebXR)
 
-### Unified OpenGL / WebGL 2 Shader Strategy
-- Desktop builds initialize **OpenGL 3.3 Core** via SDL3 (`SDL_GL_CreateContext`).
-- Web (Emscripten) and mobile/GLES builds initialize **OpenGL ES 3.0 / WebGL 2.0**.
-- Shaders live in external `assets/shaders/*.vert` and `*.frag` files written in the shared GLSL 330 Core / 300 es subset. At shader load time, the C renderer prepends either `#version 330 core` (Desktop) or `#version 300 es\nprecision highp float;` (WebGL2/GLES3).
+### Unified OpenGL 3.3 Core / GLES 3.0 / WebGL 2.0 Shaders
+- External GLSL shaders (`assets/shaders/`) share one portable subset; the renderer prepends `#version 330 core` on desktop or `#version 300 es\nprecision highp float;` on GLES3/WebGL2/WebXR.
 
-### Rendering Pipeline Passes
-
-1. **Diegetic Render-to-Texture (RTT) Pass:** Updates active in-world surfaces (Tactical Wrist-Pad screen, nearby Bridge/Factory CRT monitors, War Room 3D Holo-Table auxiliary readouts) at retro resolutions (e.g., 256×256 or 512×256) with `GL_NEAREST` crispness.
+### Render Passes
+1. **Diegetic Render-to-Texture (RTT) Pass:** Draws active in-world screens (Tactical Wrist-Pad, Bridge/Factory CRT consoles) at crisp `GL_NEAREST` retro resolutions.
 2. **Primary Scene Pass (Mono on Desktop/Mobile, Dual-View Stereo on WebXR):**
-   - **Skybox & Orbital Backdrop** (atmosphere gradient transitioning smoothly to starfield + planetary curvature as altitude rises).
-   - **Exterior & Interior Portal-Culled Low-Poly 3D Meshes** (batched by texture/material, vertex/Gouraud lighting + dynamic point/spot lights + depth fog).
-   - **Optional Voxel Chunks** (greedy-meshed on background/dirty-chunk updates into standard vertex buffers, drawn by the exact same mesh shader!).
-   - **3D Holographic War Room Projection** (additive retro wireframe/translucent mini-meshes rendered physically above the Holo-Table!).
-   - **Multi-Directional 2.5D/3D Sprite Batcher** (camera-facing quads selecting sprite column by viewing azimuth relative to unit heading).
-3. **Retro Post-Process Pass (Optional / Configurable):** Crisp internal resolution scaling, optional ordered Bayer dithering and subtle palette quantization.
-4. **Screen-Space Overlay Pass:** Minimal reticle, subtitles/radio feed, debug/profiler overlay, and **Auto-Touch Virtual Controls** when in `MOBILE_TOUCH` mode.
+   - **Starfield & Planetary Atmospheric Limb Pass:** Crisp retro stars + smooth altitude-aware sky-to-space atmospheric scattering halo around the spherical planet.
+   - **Cube-Sphere Planet & Curved Ocean Pass:** Faceted/pixel-textured retro planetary terrain & animated retro ocean waves.
+   - **Portal-Culled Exterior & Interior 3D Meshes:** Batched low-poly hulls, interior rooms, and **close-range 3D crew models** with bold faction tinting, vertex/sector dynamic lighting, and depth/horizon fog.
+   - **Optional Greedy-Meshed Voxel Chunks:** Drawn through the exact same mesh pipeline when enabled.
+   - **Hybrid Far-Range Crew & VFX Sprite Batcher:** Automatically switches distant/mid-range crew to 8-/16-directional pixel-art billboard sheets based on camera distance (configurable threshold, disabled up close inside interiors & WebXR), alongside plasma flashes, thruster flares, and explosions.
+   - **Translucent Space-Opera FX Pass:** Shimmering Fresnel/wireframe **Energy Shield Domes** with impact ripples, plasma/beam trails, atmospheric re-entry plasma glow, and the glowing **3D Planetary & Orbital Holo-Globe** inside War Rooms (miniature rotating planet + live Keplerian orbit rings + unit icons!).
+3. **Optional Retro Post-Pass:** Configurable internal resolution scale, subtle Bayer dithering, and palette quantization.
+4. **Screen-Space Overlay Pass:** Minimal reticle, radio/alert feed, and **Auto-Touch Virtual Controls** when in `MOBILE_TOUCH` mode.
 
 ### WebXR Integration
-- Implemented via a thin Emscripten C-to-JavaScript bridge (`src/platform/xr_webxr.c` + `web/xr_bridge.js`) implementing the `XrBackend` C vtable.
-- Requests `immersive-vr` (optional `local-floor` / `bounded-floor` reference space), switches the Emscripten loop to `XRSession.requestAnimationFrame`, binds the `XRWebGLLayer` framebuffer, and invokes the core C renderer once per eye (`XRView` projection + view pose).
-- Maps `XRInputSource` grip/aim poses, thumbsticks, and triggers directly into the Unified Input Router so pointing at holo-table units, flipping cockpit switches, and viewing your wrist-pad work natively.
+- Implemented behind `XrBackend` (`src/platform/xr_webxr.c` + `web/xr_bridge.js`).
+- Drives `XRSession.requestAnimationFrame`, binds `XRWebGLLayer` framebuffers, executes the Primary Scene Pass for left/right `XRView` matrices, and feeds 6-DOF head/hand poses & controller aim-rays into the Unified Input Router for Holo-Globe manipulation, cockpit controls, and physical Wrist-Pad inspection.
 
 ---
 
@@ -237,65 +247,46 @@ stateDiagram-v2
     WEBXR --> MOBILE_TOUCH : Exit XR Session (Mobile/Standalone)
 ```
 
-All four input modes emit the exact same normalized **Input Intent Stream** (`move_xy`, `look_delta`, `aim_ray_origin/dir`, `interact`, `toggle_pad`, `designate`, `command_wheel`, `select_primary`, `order_secondary`, `mag_boot_toggle`), making gameplay, Lua UI, and automated game tests cleanly uniform across every device.
+All modes emit one normalized **Input Intent Stream** (`move_xy`, `look_delta`, `aim_ray`, `interact`, `toggle_pad`, `designate`, `command_wheel`, `holo_select`, `holo_order`, `holo_orbit_zoom`, `mag_boot_eva`) consumed uniformly by C systems, Lua UI, and automated game tests.
 
 ---
 
 ## 8. Cross-Platform Build & Dependency Matrix
 
-### Build System
-- **CMake 3.24+ with `CMakePresets.json`** supporting:
-  - `linux-debug`, `linux-release`, `linux-coverage` (`-DENABLE_COVERAGE=ON`), `linux-asan`
-  - `windows-msvc`, `windows-mingw`
-  - `macos-universal` (arm64 + x86_64)
-  - `web-emscripten` (`emcmake cmake`, outputs `index.html`, `1prtsg.js`, `1prtsg.wasm` alongside loose `assets/`, `scripts/`, `mods/`, `config/`)
-
-### Core Dependencies (Strict Permissive License Policy)
-| Dependency | Role | License |
-| :--- | :--- | :--- |
-| **SDL3** | Windowing, GL context, input, touch events, audio, base path | zlib |
-| **Lua 5.4** | Embedded gameplay scripting VM | MIT |
-| **GLAD (OpenGL 3.3 Core)** | Desktop OpenGL function loader (not needed on Emscripten WebGL2) | MIT / Public Domain |
-| **stb_image / stb_vorbis** (or dr_libs) | External PNG texture & OGG/WAV audio decoding | MIT / Public Domain |
-| **cJSON** (or lightweight custom JSON parser) | `mod.json`, sprite atlas, and manifest parsing | MIT |
-| **Unity** (ThrowTheSwitch) | Lightweight C11 unit test framework integrated with CTest | MIT |
+- **Build System:** CMake 3.24+ with `CMakePresets.json` (`linux-debug`, `linux-release`, `linux-coverage`, `linux-asan`, `windows-msvc`, `windows-mingw`, `macos-universal`, `web-emscripten`).
+- **Permissive Dependencies Only:**
+  - **SDL3** (zlib) — Windowing, GL context, input/touch, audio, base path
+  - **Lua 5.4** (MIT) — Embedded gameplay scripting VM
+  - **GLAD** (MIT / Public Domain) — Desktop OpenGL 3.3 Core loader
+  - **stb_image / stb_vorbis** or **dr_libs** (MIT / Public Domain) — External PNG & audio decoding
+  - **cJSON** (MIT) — JSON manifest/atlas/planet parsing
+  - **Unity** (MIT) — C11 unit test framework driven via CTest
 
 ---
 
 ## 9. OpenSpec, >= 95% Unit Coverage & Automated Game Testing
 
 ### 9.1 OpenSpec Workflow
-Every capability follows the `openspec/config.yaml` (`spec-driven`) lifecycle:
-1. **Propose:** Create `openspec/changes/<change-name>/proposal.md` defining motivation, scope, C vs. Lua impact, and capabilities.
-2. **Specify:** Author `specs/<capability>/spec.md` with testable `SHALL/MUST` requirements and `GIVEN/WHEN/THEN` scenarios.
-3. **Design & Plan:** Author `design.md` (architecture, vtable seams, VFS paths) and `tasks.md` (checkbox tasks paired with unit & game tests).
-4. **Apply & Verify:** Implement code, pass >= 95% C & Lua coverage gates, and pass all automated game tests.
-5. **Archive:** Merge delta specs into `openspec/specs/<capability>/spec.md` and archive the change under `openspec/changes/archive/`.
+Every capability progresses strictly through `openspec/config.yaml` (`spec-driven`):
+`proposal.md` -> `specs/<capability>/spec.md` -> `design.md` -> `tasks.md` -> `apply` -> `archive` into `openspec/specs/<capability>/spec.md`.
 
 ### 9.2 Engineering for >= 95% Unit Test Coverage
+- **Pure C Core Modules (~85–90% of C LOC):** Math (`Vec3d`, `Mat4f`, `Quat`), cube-sphere terrain & ENU frame math, Keplerian orbital mechanics & atmospheric drag, nested interior frame tree & portals, ECS pools, VFS & parsers, greedy voxel mesher, hybrid crew LOD selector, input router, touch geometry, sensor/horizon visibility, and Lua C bindings have **zero SDL/GL calls** and run natively at millisecond speed under CTest.
+- **Thin Hardware Vtables (~10–15% of C LOC):** `PlatformAPI`, `GfxBackend`, `AudioBackend`, `XrBackend`, and `FsBackend` are tested against deterministic **Mock/Recording Backends** verifying render batches, shader/error paths, audio zone routing, and WebXR dual-eye matrices.
+- **Hard Coverage Gates:**
+  - **C Coverage:** `--coverage` (`gcov`/`llvm-cov`) gated via `gcovr --fail-under-line 95` (with branch coverage tracked and reported).
+  - **Lua Coverage:** In-process Lua 5.4 `debug.sethook("l")` line-coverage collector asserting **>= 95% line coverage** across `scripts/`.
 
-Hitting >= 95% coverage in a C + SDL3 + OpenGL + WebXR codebase is realistic **only when hardware seams are designed in from commit #1**:
-
-- **Pure C Core Modules (~85–90% of C LOC):** Math (`vec3d`, `mat4`, `quat`), spatial frame tree, portal transitions, deck collision, ECS pools, command queues, VFS, asset parsers, voxel greedy mesher, input router, touch layout geometry, sensor/fog grids, and Lua C bindings have **zero SDL/OpenGL calls** and run natively under CTest at millisecond speed.
-- **Thin Hardware Adapters (~10–15% of C LOC):** `PlatformAPI`, `GfxBackend`, `AudioBackend`, `XrBackend`, and `FsBackend` are clean function-pointer structs. Every caller is unit-tested against deterministic **Mock/Recording Backends** that verify exact draw batches, shader uploads, audio triggers, and XR view transforms — including error paths (allocation failures, shader compile errors, missing VFS files, corrupt manifests).
-- **Coverage Measurement & Hard CI Gate:**
-  - **C Coverage:** Built with `--coverage` (`gcov`/`llvm-cov`) and verified via `gcovr --fail-under-line 95` (with branch coverage reported alongside line coverage). Only minimal OS/Emscripten entry trampolines that cannot execute natively on Linux CI (e.g., `#ifdef _WIN32` / `#ifdef __EMSCRIPTEN__` shims) are isolated to thin `<50`-line adapters tested on their respective CI runners.
-  - **Lua Coverage:** Executed in-process by the embedded Lua 5.4 VM test runner with a lightweight `debug.sethook("l")` line-coverage collector asserting **>= 95% line coverage** across `scripts/`.
-
-### 9.3 Automated Game Tests (End-to-End Verification)
-
-Beyond unit tests, the engine ships with a first-class **Automated Game Test Harness**:
-
-1. **Tier 1 — Headless Deterministic Simulation Tests (Fast, Every Commit & PR):**
-   - Runs the real binary with `--headless --data-dir . --test-script scripts/tests/game/<scenario>.lua`.
-   - Uses `gfx_null` + `audio_null` + deterministic fixed-timestep clock + `engine.test` synthetic input injection.
-   - Example end-to-end scenarios:
-     - `test_hq_holotable_production.lua`: Commander walks to HQ War Room -> interacts with 3D Holo-Table -> queues Tank at Factory -> walks to Factory bay -> confirms physical Tank entity spawns with crew -> issues move order -> verifies Tank reaches waypoint.
-     - `test_dropship_boarding_and_transit.lua`: Commander boards Dropship via rear ramp -> transitions cleanly into Dropship local frame -> orders AI pilot to launch -> climbs to orbital station hangar -> docks -> exits into Space Station local frame with zero NaN/tunneling.
-     - `test_localized_damage_and_repair.lua`: Enemy fire damages Destroyer engine room -> verifies top speed degrades -> verifies AI engineer walks to engine room and restores propulsion.
-     - `test_mobile_touch_command.lua`: Switches input mode to `MOBILE_TOUCH` -> feeds synthetic virtual thumbstick, look-drag, and Wrist-Pad touch gestures -> verifies unit selection and order dispatch.
-     - `test_webxr_holotable_ray.lua`: Activates mock `XrBackend` -> verifies stereoscopic view transforms + controller aim-ray hits unit on Holo-Table and issues valid attack order.
-     - `test_mod_override_vfs.lua`: Mounts a test mod -> verifies overridden Lua unit stats and external asset paths take precedence without modifying base files.
-2. **Tier 2 — Offscreen GPU & Browser WebGL2 / WebXR Smoke Tests (CI Verification):**
-   - **Native Offscreen OpenGL:** Boots with software/offscreen GL (Mesa llvmpipe / EGL / xvfb), loads a live scenario, renders N frames, asserts zero `glGetError()` faults, zero sanitizer errors (`ASan`/`UBSan`), and non-blank framebuffer output.
-   - **Emscripten Web + Mobile Touch + WebXR:** Serves the Web build over local HTTP (verifying external loose `assets/` and `scripts/` load via HTTP 200 with zero baked blobs) inside headless Chromium (Playwright), emulates a mobile touch viewport to confirm automatic touch-UI activation, and exercises WebXR emulator hooks with zero console/WASM errors.
+### 9.3 Automated Game Tests
+1. **Tier 1 — Headless Deterministic Simulation Tests (Every Commit & PR):**
+   Runs `--headless --data-dir . --test-script scripts/tests/game/<scenario>.lua` using `gfx_null` + `audio_null` + synthetic `engine.test` inputs:
+   - `test_citadel_hologlobe_orders.lua`: Commander walks to Citadel War Room -> rotates/zooms 3D Planetary Holo-Globe -> queues Plasma Tank -> confirms physical spawn with 3D crew -> issues move order on curved surface -> verifies arrival.
+   - `test_orbital_ascent_and_docking.lua`: Commander boards Dropship on surface -> launches through atmosphere (verifies re-entry/ascent drag & velocity profile) -> enters Keplerian orbit -> docks inside Orbital Shipyard -> crosses airlock portal cleanly into Station frame with zero NaN/clipping.
+   - `test_ironman_commander_loss.lua`: Enemy plasma barrage collapses flagship shields and destroys flagship with Commander still aboard -> verifies Hardcore Ironman defeat condition triggers; contrast scenario verifies survival when Commander sprints to Escape Pod and ejects in time.
+   - `test_hybrid_crew_lod_and_damage.lua`: Verifies crew renders as 3D meshes inside interiors and switches to directional sprites at range; verifies engine-room hit reduces thrust until AI engineer repairs it.
+   - `test_mobile_touch_hologlobe.lua`: Activates `MOBILE_TOUCH` mode -> feeds synthetic thumbstick, look-drag, and two-finger Holo-Globe pinch/tap -> verifies unit selection & order execution.
+   - `test_webxr_stereo_hologlobe.lua`: Activates mock `XrBackend` -> verifies dual-eye stereo projection & controller aim-ray issuing orbital fleet orders on the Holo-Globe.
+   - `test_mod_override_vfs.lua`: Mounts a sample mod -> verifies Lua unit rules and external assets override base files without modifying base folders.
+2. **Tier 2 — Offscreen GPU & Browser WebGL2 / WebXR Smoke Tests (CI):**
+   - **Native Offscreen OpenGL:** Mesa llvmpipe / EGL / xvfb renders live frames under `ASan`/`UBSan` asserting zero `glGetError()` faults and non-blank framebuffers.
+   - **Emscripten Web + Mobile Touch + WebXR:** Serves loose external `assets/` and `scripts/` over local HTTP to headless Chromium (Playwright), confirming zero baked blobs, auto-touch switching on mobile viewport emulation, WebXR bridge readiness, and zero console/WASM errors.
