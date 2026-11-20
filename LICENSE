@@ -1,0 +1,11 @@
+# Licensing for 1stPRTS (`1prtsg`)
+
+This project is dual-licensed by asset category to maximize code reuse while ensuring clear attribution for creative art works:
+
+- **Code, Scripts, Shaders, Build Files, Tests, and Documentation** — Licensed under the **MIT License** (`SPDX-License-Identifier: MIT`). See [LICENSE-CODE](LICENSE-CODE).
+  - Includes all C engine source files (`src/`, `include/`), Lua game scripts (`scripts/`, `mods/*/scripts/`), GLSL shaders (`assets/shaders/`), build configuration (`CMakeLists.txt`, `cmake/`), automated test suites (`tests/`), tooling (`tools/`), OpenSpec specifications (`openspec/`), and documentation (`docs/`).
+
+- **Art and Audio Assets** — Licensed under the **Creative Commons Attribution 4.0 International License (CC BY 4.0)** (`SPDX-License-Identifier: CC-BY-4.0`). See [LICENSE-ART](LICENSE-ART).
+  - Includes 3D models, textures, pixel art, sprite sheets, voxel models, interior geometry templates, fonts, maps, music, sound effects, and concept art under `assets/` (excluding GLSL shader code under `assets/shaders/`, which is licensed under MIT).
+
+- **Third-Party Dependencies** — Any vendored or fetched third-party libraries (such as SDL3, Lua 5.4, or test frameworks) retain their respective permissive open-source licenses (e.g., zlib, MIT, BSD), documented in `THIRD_PARTY_NOTICES.md` when added.

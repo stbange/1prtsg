@@ -1,0 +1,52 @@
+# Build directories
+build/
+build-*/
+out/
+dist/
+cmake-build-*/
+
+# Compiled objects and binaries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.wasm
+*.wasm.map
+*.js.mem
+*.data
+*.pdb
+*.ilk
+
+# Coverage artifacts
+*.gcda
+*.gcno
+*.gcov
+coverage/
+lcov.info
+coverage.xml
+coverage.html
+
+# Test outputs & temporary logs
+Testing/
+test-results/
+screenshots/actual/
+*.log
+
+# Emscripten & Node tooling caches
+.emscripten_cache/
+node_modules/
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.clangd/
+compile_commands.json

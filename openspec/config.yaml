@@ -1,0 +1,57 @@
+schema: spec-driven
+
+context: |
+  Project: 1stPRTS (repository: 1prtsg) — an exclusively first-person Real-Time Strategy (RTS) game
+  where all buildings, vehicles, naval ships, aircraft, spacecraft, and space stations are realistically
+  huge, manned by simulated crew, and fully enterable and explorable.
+
+  Core Technical Stack & Constraints:
+  - Core Engine: C11, SDL3, OpenGL (unified OpenGL 3.3 Core / OpenGL ES 3.0 / WebGL 2.0 shader subset)
+  - Scripted Gameplay Layer: Embedded Lua 5.4 in external editable scripts/ and mods/ folders
+  - Retro 3D Graphics: Low-poly 3D objects, directional 2.5D/3D sprites, and optional chunked voxels
+  - Target Platforms: Windows, Linux, macOS, Web (Emscripten/WASM), WebXR (6-DOF VR), and Mobile Web
+    with automatic runtime switching to touch controls
+  - External Assets Policy: Assets (models, textures, sprites, voxels, shaders, audio, maps, Lua scripts)
+    MUST NOT be baked into executables or WASM binaries; they reside in sibling folders alongside the binary
+    and are loaded through the Virtual File System (VFS) with layered mod support
+  - Quality Gates:
+    * OpenSpec spec-driven development for every capability and change
+    * Unit test coverage MUST be >= 95% (C via gcov/llvm-cov + Lua via debug hook coverage)
+    * Automated end-to-end game tests (headless deterministic simulation + offscreen/browser visual smoke tests)
+  - Licensing:
+    * Code, scripts, shaders, tests, and docs: MIT License (LICENSE-CODE)
+    * Art and audio assets: CC BY 4.0 (LICENSE-ART)
+
+  Key Documentation:
+  - Game Concept & Design Bible: docs/CONCEPT.md
+  - Technical Architecture Blueprint: docs/ARCHITECTURE.md
+
+rules:
+  proposal:
+    - Clearly distinguish C Core Engine changes from Lua Script Layer and external Asset changes
+    - Identify cross-platform impact across Windows, Linux, macOS, Web (Emscripten), Mobile Touch, and WebXR
+    - Confirm zero assets or Lua scripts are embedded into compiled binaries
+  specs:
+    - Express observable behavior contracts using SHALL/MUST and Given/When/Then scenarios
+    - Every capability spec MUST include verifiable scenarios suitable for unit tests and/or automated game tests
+    - Keep internal C struct names and implementation details in design.md rather than spec.md
+    - Preserve strict separation between engine capabilities and moddable Lua game rules
+  design:
+    - Document dependency-injection seams (vtable interfaces) that enable >= 95% unit test coverage without GPU/OS hardware
+    - Address 64-bit world precision and nested local interior reference frames whenever spatial behavior is touched
+    - Document VFS asset resolution paths and hot-reload behavior for any new asset or script type
+  tasks:
+    - Every implementation task group MUST include corresponding unit tests targeting >= 95% coverage for touched modules
+    - Include at least one automated game test scenario task whenever player-facing, AI, interior, or input behavior changes
+    - Verify both native build/tests and Emscripten/Web compatibility where applicable
+
+operations:
+  apply:
+    guidance:
+      - Run unit tests and check coverage (>= 95%) after completing each task group
+      - Run automated headless game test scenarios before marking gameplay or engine tasks complete
+      - Verify no binary-embedded assets were introduced and SPDX license headers match MIT / CC-BY-4.0 rules
+  archive:
+    guidance:
+      - Confirm all tasks.md checkboxes are complete and coverage + automated game test gates pass before archiving
+      - Summarize newly synced capabilities concisely
