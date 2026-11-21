@@ -52,15 +52,30 @@ Every single one of the **76 constructs** across all 6 classes ships with its ow
 
 ---
 
-## Complete Feature Matrix (Phases 1–4 + Solaris Art Direction + 76 Unique Models & Seamless RTS)
+## Explorable 1–420 Room Multi-Deck Mega-Interiors & Living 12-Role Crew (`src/interior_gen.c`, `src/crew_sim.c`)
 
-- **Exclusively First-Person Commander & Hardcore Ironman (`src/world.c`, `src/controller.c`):** Zero god-camera. Walk inside 1:1 multi-deck interiors, interact with physical War Room **3D Planetary & Orbital Holo-Globes**, Factory Terminals, Pilot Seats, and Bridge Helms, take direct manual piloting control of any construct (then hand back to AI crew), and survive Critical Reactor Meltdowns via physical **Escape Pod** evacuation.
+Every construct scales deterministically from a 1-room Starfighter cockpit to **420 fully connected rooms across 20 decks** on capital ships and orbital stations (`Dreadnought Solaris`, `Orbital Shipyard Drydock`, `Deep-Space Command Citadel`), complete with open walk-through bulkhead doorways, vertical **Turbolifts** (`[`/`]` or `E`), a live **Diegetic Deck Blueprint Minimap**, and a **fully staffed 12-role living crew** (Command Officers, Pilots, Astrogators, Gunners, Shield Techs, Comms Officers, Engineers, Medics, patrolling Solar Marines, Flight Deck Crew, Hull Mechanics, and Quartermasters) who actively work stations, patrol corridors, weld-repair damaged cores, and repel Crimson Breachers during Red Alert (`F`):
+
+| 420-Room Dreadnought Deck 1 Bridge & 400km LEO View | Multi-Room Spine Corridor, Turbolift & Patrolling Marines |
+| :---: | :---: |
+| ![Dreadnought Bridge Staffed](docs/screenshots/interior_01_dreadnought_bridge_staffed.png) | ![Dreadnought Corridor Marines](docs/screenshots/interior_02_dreadnought_corridor_marines.png) |
+
+| 420-Room Orbital Shipyard Deck 14 Reactor Core (Red Alert) | 150-Room Fleet Carrier Deck 2 Starfighter Hangar Bay |
+| :---: | :---: |
+| ![Shipyard Reactor Deck](docs/screenshots/interior_03_shipyard_reactor_deck.png) | ![Carrier Hangar Deck](docs/screenshots/interior_04_carrier_hangar_deck.png) |
+
+---
+
+## Complete Feature Matrix (Phases 1–4 + Solaris Art Direction + 76 Unique Models + 1–420 Room Mega-Interiors)
+
+- **Exclusively First-Person Commander & Hardcore Ironman (`src/world.c`, `src/controller.c`):** Zero god-camera. Walk seamlessly across interconnected rooms through open bulkhead doorways inside 1:1 multi-deck interiors, ride vertical **Turbolifts** across up to 20 decks, interact with physical War Room **3D Planetary & Orbital Holo-Globes**, Factory Terminals, Pilot Seats, and Bridge Helms, take direct manual piloting control of any construct (then hand back to AI crew), and survive Critical Reactor Meltdowns via physical **Escape Pod** evacuation.
+- **Explorable 1–420 Room Mega-Interiors & Living 12-Role Crew (`src/interior_gen.c`, `src/crew_sim.c`):** Deterministic multi-deck floorplans for all **76 constructs** with 100% BFS-verified doorway connectivity, active-deck streaming, room-specific 3D props (Tokamak Reactor Cores, Shield Cores, Hangar Starfighters, Turbolift Shafts, Medbay Pods, Armory Lockers, illuminated corridor stripes), top-right **Diegetic Deck Blueprint Minimap**, and living 12-role staffed crew performing station work, corridor patrols, Engineer weld repairs, and Marine counter-boarding defense.
 - **True-Scale Spherical Planet & Real Orbital Mechanics (`src/planet.c`, `src/controller.c`):** 64-bit geocentric coordinates, 6-face cube-sphere terrain/oceans, local ENU surface frames, exponential atmosphere, aerobraking shielded re-entry heat flux, Velocity-Verlet orbital integration, Keplerian elements, Hohmann delta-v transfers, and automated Astrogator ascent/rendezvous/docking/re-entry.
 - **Doubled External Roster (`docs/ROSTER.md`, `scripts/units/`, `scripts/interiors/catalog.lua`, `scripts/crew/`):** **76 distinct enterable constructs** (24 Buildings · 10 Ground Vehicles · 10 Naval Ships · 8 Aircraft · 14 Spacecraft · 10 Space Stations), each with its own dedicated sculpted `.obj` model (`assets/models/<id>.obj`) and tailored multi-deck enterable interior + **12 crew/personnel roles** registered entirely from external MIT Lua 5.4 scripts.
 - **Multi-Theater Economy, Spherical Horizon Sensors & Comms Relays (`src/economy.c`):** Ore/Fuel/Power/Manpower ledgers, 1:1 timed production queues, true planetary curvature horizon occlusion for Fog-of-War sensors (Orbital Recon Satellites), and multi-hop Comms Relay BFS networks (destroying a GEO Relay severs remote surface command links).
 - **3D Spatial Audio & Orbital Acoustics (`src/audio.c`, `src/audio_sdl3.c`):** External WAV PCM decoder, 3D attenuation/panning, armored interior hull low-pass muffling, and orbital vacuum silence for airborne sounds while preserving hull-conducted vibration and radio comms.
 - **Multi-Deck Capital Ship Boarding & Reactor Meltdowns (`src/boarding.c`):** Deck-by-deck marine assaults (`Hangar/Airlock` -> `Engineering` -> `Bridge/CIC`), hull decompression vacuum hazards requiring `mag_boots`, intact enemy flagship capture (flipping `faction_id`), and timed Critical Reactor Meltdown countdowns.
-- **Solaris Retro-Futurism 3D Graphics, Auto-Touch Mobile Web & True Stereoscopic WebXR (`src/retro_renderer.c`, `src/gfx_gl.c`, `src/input.c`, `web/`):** Unified OpenGL 3.3 Core / OpenGL ES 3.0 / WebGL 2.0 renderer featuring sculpted multi-material vertex-colored `.obj` meshes, brushed satin titanium/obsidian/emerald-jade palettes, procedural twilight-ring & cosmic nebula sky domes (`sky.vert`/`sky.frag`), Fresnel rim-lit metallic shading with glowing emissive thrusters/canopies/light rails, vaulted interior arches, analytic hexagonal energy shields, hybrid 3D/8-dir sprite crew LOD (forced 3D inside interiors & VR), optional face-culled chunked voxels (`src/voxel.c`), automatic Mobile Web Touch controls, and side-by-side dual-viewport **WebXR 6-DOF Stereo VR** with laser aim-rays.
+- **Solaris Retro-Futurism 3D Graphics, Pointer Lock WebGL 2, Auto-Touch Mobile Web & True Stereoscopic WebXR (`src/retro_renderer.c`, `src/gfx_gl.c`, `src/input.c`, `web/`):** Unified OpenGL 3.3 Core / OpenGL ES 3.0 / WebGL 2.0 renderer featuring sculpted multi-material vertex-colored `.obj` meshes, brushed satin titanium/obsidian/emerald-jade palettes, procedural twilight-ring & cosmic nebula sky domes (`sky.vert`/`sky.frag`), Fresnel rim-lit metallic shading with glowing emissive thrusters/canopies/light rails, vaulted interior arches, analytic hexagonal energy shields, hybrid 3D/8-dir sprite crew LOD (forced 3D inside interiors & VR), optional face-culled chunked voxels (`src/voxel.c`), browser Pointer Lock 360° mouse look + WebAudio unlock, automatic Mobile Web Touch controls, and side-by-side dual-viewport **WebXR 6-DOF Stereo VR** with laser aim-rays.
 - **Zero Baked Assets, External Config, Live Hot-Reload & Deterministic Save/Load (`src/vfs.c`, `src/config.c`, `src/save_load.c`):** Every asset, script, config (`config/engine.cfg`), and mod (`mods/example_mod/`) sits loose beside the binary (fetched via `manifest.json` on Web), with runtime mtime hot-reload watching and deterministic `RTS_SAVE_V1` world snapshot serialization.
 
 ---
@@ -78,7 +93,7 @@ Every single one of the **76 constructs** across all 6 classes ships with its ow
 cmake --preset linux-coverage
 cmake --build --preset linux-coverage -j$(nproc)
 
-# Run C Unity unit tests, Lua unit tests (>= 95% Lua coverage), and 19 headless automated game tests
+# Run C Unity unit tests, Lua unit tests (>= 95% Lua coverage), and 20 headless automated game tests
 find build/linux-coverage -name '*.gcda' -delete
 ctest --preset linux-coverage --output-on-failure
 
@@ -90,13 +105,18 @@ python3 tools/check_coverage.py --build-dir build/linux-coverage --source-root .
 
 ```bash
 # Launch interactive SDL3 + OpenGL window:
-#   L = Live Solaris Tactical Defense | M = Seamless Planetary-to-Orbital Sandbox RTS
-#   WASD = Walk/Pilot | E = Console/Holo-Globe [1-4 Orders] | B = Board/EVA | G = Astrogator 400km Orbit
-#   F5/F9 = Quicksave/Quickload (RTS_SAVE_V1) | Keys 1-9 = Showcase Scenes
+#   L = Live Solaris Tactical Defense | M = Seamless Sandbox RTS & Explorable Mega-Interiors
+#   WASD = Walk Rooms/Pilot | [/] = Turbolift Deck Up/Down | N = Cycle Megaships (72..420 Rooms)
+#   F = Red Alert (Crew Repair & Counter-Boarding) | E = Console/Holo-Globe [1-4 Orders] | B = Board/EVA | G = 400km Orbit
+#   F5/F9 = Quicksave/Quickload (RTS_SAVE_V1) | C = 76-Unit 3D Catalog | Keys 1-9 = Showcase Scenes
 ./build/linux-coverage/1prtsg --data-dir .
 
 # Launch with the external Emerald Vanguard mod mounted (zero recompilation!)
 ./build/linux-coverage/1prtsg --data-dir . --mod example_mod
+
+# Capture all 4 live OpenGL 3.3 Core Explorable Mega-Interior & Living Crew screenshots
+LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1600x960x24" \
+  ./build/linux-coverage/1prtsg --data-dir . --width 1600 --height 960 --capture-mega-interiors docs/screenshots
 
 # Capture all 6 class galleries (76 unique sculpted constructs!) + live Sandbox RTS frame
 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1600x960x24" \

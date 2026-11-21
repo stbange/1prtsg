@@ -91,9 +91,21 @@ void rts_controller_step(RtsCommanderController *ctrl, RtsWorld *w, const RtsInp
     RtsVec3d next_pos = rts_v3d_add(w->commander.local_pos, rts_v3d_scale(w->commander.local_vel, dt_s));
     const RtsInteriorRoom *cur_room = rts_interior_find_room_at(&w->interiors, w->commander.frame_id, w->commander.local_pos);
     if (cur_room && !rts_aabb_contains(cur_room->local_bounds, next_pos)) {
-        /* Clamp cleanly inside current pressurized room unless stepping into a portal */
-        next_pos.x = rts_clampd(next_pos.x, cur_room->local_bounds.min.x + 0.3, cur_room->local_bounds.max.x - 0.3);
-        next_pos.z = rts_clampd(next_pos.z, cur_room->local_bounds.min.z + 0.3, cur_room->local_bounds.max.z - 0.3);
+        /* Allow seamless traversal into any connected adjacent room through open bulkhead doorways */
+        const RtsInteriorRoom *dest_room = rts_interior_find_room_at(&w->interiors, w->commander.frame_id, next_pos);
+        if (!dest_room) {
+            /* Axis-slide smoothly along solid exterior perimeter walls */
+            RtsVec3d try_x = rts_v3d(next_pos.x, w->commander.local_pos.y, w->commander.local_pos.z);
+            RtsVec3d try_z = rts_v3d(w->commander.local_pos.x, w->commander.local_pos.y, next_pos.z);
+            bool ok_x = rts_interior_find_room_at(&w->interiors, w->commander.frame_id, try_x) != NULL;
+            bool ok_z = rts_interior_find_room_at(&w->interiors, w->commander.frame_id, try_z) != NULL;
+            if (!ok_x) {
+                next_pos.x = rts_clampd(next_pos.x, cur_room->local_bounds.min.x + 0.25, cur_room->local_bounds.max.x - 0.25);
+            }
+            if (!ok_z) {
+                next_pos.z = rts_clampd(next_pos.z, cur_room->local_bounds.min.z + 0.25, cur_room->local_bounds.max.z - 0.25);
+            }
+        }
     }
     w->commander.local_pos = next_pos;
     rts_interior_try_portal_transfer(&w->interiors, &w->commander.frame_id, &w->commander.local_pos, &w->commander.local_vel);

@@ -118,6 +118,10 @@ typedef struct RtsMeshCacheEntry {
     float bounds_radius;
 } RtsMeshCacheEntry;
 
+struct RtsTacticalSim;
+struct RtsMegaInterior;
+struct RtsCrewDeckSim;
+
 typedef struct RtsRetroRenderer {
     RtsGfxBackend gfx;
     const RtsVfs *vfs;
@@ -163,18 +167,20 @@ typedef struct RtsRetroRenderer {
     char live_prompt[128];
     char live_toast[160];
 
+    const struct RtsMegaInterior *active_mega;
+    const struct RtsCrewDeckSim *active_crew;
+
     RtsVec3f cur_cam_pos;
     RtsVec4f cur_fog_color;
     bool initialized;
 } RtsRetroRenderer;
-
-struct RtsTacticalSim;
 
 bool rts_renderer_init(RtsRetroRenderer *rr, RtsGfxBackend gfx, const RtsVfs *vfs, int width, int height);
 void rts_renderer_shutdown(RtsRetroRenderer *rr);
 RtsGfxHandle rts_renderer_get_mesh(RtsRetroRenderer *rr, const char *rel_path);
 const RtsMeshCacheEntry *rts_renderer_get_mesh_entry(RtsRetroRenderer *rr, const char *rel_path);
 void rts_renderer_set_live_status(RtsRetroRenderer *rr, const char *mode_tag, const char *prompt, const char *toast);
+void rts_renderer_set_active_interior(RtsRetroRenderer *rr, const struct RtsMegaInterior *mega, const struct RtsCrewDeckSim *crew);
 void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsShowcaseScene scene, float time_s);
 void rts_renderer_render_roster_class(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsConstructClass cls, float time_s);
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s);

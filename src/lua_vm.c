@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: MIT */
+#include "rts/interior_gen.h"
 #include "rts/lua_vm.h"
 #include "lauxlib.h"
 #include "lua.h"
@@ -398,6 +399,31 @@ static int l_interior_counts(lua_State *L) {
     lua_pushinteger(L, (lua_Integer)vm->world->interiors.portal_count);
     lua_pushinteger(L, (lua_Integer)vm->world->interiors.console_count);
     return 3;
+}
+
+static int l_interior_mega_stats(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    const char *bp_id = luaL_checkstring(L, 1);
+    const RtsConstructBlueprint *bp = rts_world_find_blueprint(vm->world, bp_id);
+    if (!bp) {
+        lua_pushnil(L);
+        return 1;
+    }
+    RtsMegaInterior *mega = (RtsMegaInterior *)calloc(1, sizeof(RtsMegaInterior));
+    if (!mega || !rts_mega_generate_for_blueprint(mega, bp, 0u)) {
+        free(mega);
+        lua_pushnil(L);
+        return 1;
+    }
+    uint32_t reached = 0u;
+    bool conn = rts_mega_verify_connectivity(mega, &reached);
+    lua_pushinteger(L, (lua_Integer)mega->total_rooms);
+    lua_pushinteger(L, (lua_Integer)mega->deck_count);
+    lua_pushinteger(L, (lua_Integer)mega->cols);
+    lua_pushinteger(L, (lua_Integer)mega->rows);
+    lua_pushboolean(L, conn && reached == mega->total_rooms);
+    free(mega);
+    return 5;
 }
 
 static int l_interior_add_portal_and_transfer(lua_State *L) {
@@ -848,6 +874,7 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
         {"add_portal", l_interior_add_portal},
         {"add_console", l_interior_add_console},
         {"counts", l_interior_counts},
+        {"mega_stats", l_interior_mega_stats},
         {"add_portal_and_transfer", l_interior_add_portal_and_transfer},
         {NULL, NULL}
     };

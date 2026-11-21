@@ -158,4 +158,15 @@ end
 local rm_c, pt_c, cn_c = engine.interior.counts()
 expect(rm_c >= 20 and pt_c >= 6 and cn_c >= 10, "Scenario 19: Live hydrated multi-deck interiors missing")
 
-print("[Automated Game Tests] ALL 19 END-TO-END SCENARIOS PASSED!")
+-- Scenario 20: Procedural 1..420 Room Multi-Deck Mega-Interiors Verified 100% Connected Across All 76 Constructs
+local max_mega_rooms = 0
+for i = 1, #registry.all do
+    local bp = registry.all[i]
+    local rooms, decks, cols, rows, connected = engine.interior.mega_stats(bp.id)
+    expect(rooms ~= nil and rooms >= 1 and decks >= 1 and cols >= 1 and rows >= 1 and connected,
+           "Scenario 20: Mega-interior connectivity failed for " .. bp.id)
+    if rooms > max_mega_rooms then max_mega_rooms = rooms end
+end
+expect(max_mega_rooms == 420, "Scenario 20: Capital mega-constructs must reach 420 explorable rooms")
+
+print("[Automated Game Tests] ALL 20 END-TO-END SCENARIOS PASSED!")

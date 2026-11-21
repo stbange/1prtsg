@@ -27,8 +27,38 @@ typedef enum RtsConsoleType {
     RTS_CONSOLE_PILOT_SEAT = 2,
     RTS_CONSOLE_FACTORY_TERMINAL = 3,
     RTS_CONSOLE_ESCAPE_POD = 4,
-    RTS_CONSOLE_TURRET_GUNNER = 5
+    RTS_CONSOLE_TURRET_GUNNER = 5,
+    RTS_CONSOLE_TURBOLIFT = 6
 } RtsConsoleType;
+
+typedef enum RtsRoomKind {
+    RTS_ROOM_GENERIC = 0,
+    RTS_ROOM_BRIDGE_CIC = 1,
+    RTS_ROOM_WAR_ROOM = 2,
+    RTS_ROOM_CORRIDOR = 3,
+    RTS_ROOM_TURBOLIFT = 4,
+    RTS_ROOM_HANGAR = 5,
+    RTS_ROOM_REACTOR = 6,
+    RTS_ROOM_SHIELD_CORE = 7,
+    RTS_ROOM_WEAPONS = 8,
+    RTS_ROOM_QUARTERS = 9,
+    RTS_ROOM_MESS_HALL = 10,
+    RTS_ROOM_MEDBAY = 11,
+    RTS_ROOM_ARMORY = 12,
+    RTS_ROOM_BARRACKS = 13,
+    RTS_ROOM_SENSOR_LAB = 14,
+    RTS_ROOM_CARGO = 15,
+    RTS_ROOM_ENGINEERING = 16,
+    RTS_ROOM_AIRLOCK = 17,
+    RTS_ROOM_ESCAPE_POD = 18,
+    RTS_ROOM_TRAM_STATION = 19,
+    RTS_ROOM_KIND_COUNT = 20
+} RtsRoomKind;
+
+#define RTS_DOOR_N 1u
+#define RTS_DOOR_E 2u
+#define RTS_DOOR_S 4u
+#define RTS_DOOR_W 8u
 
 typedef enum RtsInteriorLod {
     RTS_INTERIOR_LOD_ABSTRACTED = 0,
@@ -55,6 +85,13 @@ typedef struct RtsInteriorRoom {
     char name[64];
     RtsAabb local_bounds;
     RtsVec3f light_color;
+    RtsRoomKind kind;
+    uint8_t door_mask;
+    uint16_t deck_index;
+    int16_t grid_x;
+    int16_t grid_z;
+    float damaged_pct;
+    bool breached;
     bool pressurized;
     bool active;
 } RtsInteriorRoom;
@@ -103,6 +140,7 @@ bool rts_interior_world_to_local(const RtsInteriorSystem *sys, RtsFrameId frame_
 bool rts_interior_frame_world_pose(const RtsInteriorSystem *sys, RtsFrameId frame_id, RtsVec3d *out_pos, RtsQuatd *out_rot);
 
 uint32_t rts_interior_add_room(RtsInteriorSystem *sys, RtsFrameId frame_id, const char *name, RtsAabb bounds, RtsVec3f light_color, bool pressurized);
+RtsInteriorRoom *rts_interior_get_room(RtsInteriorSystem *sys, uint32_t room_id);
 const RtsInteriorRoom *rts_interior_find_room_at(const RtsInteriorSystem *sys, RtsFrameId frame_id, RtsVec3d local_p);
 
 uint32_t rts_interior_add_portal(RtsInteriorSystem *sys, RtsFrameId from_frame, RtsFrameId to_frame, const char *name, RtsAabb trigger_box, RtsVec3d dest_local_pos, bool is_open);
@@ -110,6 +148,7 @@ bool rts_interior_try_portal_transfer(const RtsInteriorSystem *sys, RtsFrameId *
 
 uint32_t rts_interior_add_console(RtsInteriorSystem *sys, RtsFrameId frame_id, const char *name, RtsConsoleType type, RtsVec3d local_pos, double interact_radius, uint32_t owner_entity_id);
 const RtsConsoleStation *rts_interior_find_nearest_console(const RtsInteriorSystem *sys, RtsFrameId frame_id, RtsVec3d local_p);
+void rts_interior_clear_frame_contents(RtsInteriorSystem *sys, RtsFrameId frame_id);
 
 void rts_interior_update_lod(RtsInteriorSystem *sys, RtsFrameId commander_frame, RtsVec3d commander_world_pos, double hydrate_radius_m);
 

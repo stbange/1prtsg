@@ -111,8 +111,11 @@
 
   <div id="toolbar">
     <button class="tb-btn accent" id="btn-tactical" title="Live Solaris Tactical Defense (Key L)">Tactical [L]</button>
-    <button class="tb-btn accent" id="btn-sandbox" title="Seamless Planetary-to-Orbital Sandbox RTS (Key M)">Sandbox RTS [M]</button>
-    <button class="tb-btn" id="btn-catalog" title="Cycle all 6 Construct Classes / 76 Unique 3D Models (Key C)">76-Unit 3D Catalog [C]</button>
+    <button class="tb-btn accent" id="btn-sandbox" title="Seamless Planetary-to-Orbital Sandbox RTS & Explorable Mega-Interiors (Key M)">Sandbox RTS [M]</button>
+    <button class="tb-btn" id="btn-ship" title="Cycle Explorable Megaships: Citadel 72rm -> Dropship -> Carrier 150rm -> Dreadnought 420rm -> Shipyard 420rm (Key N)">Next Ship [N]</button>
+    <button class="tb-btn" id="btn-lift" title="Ride Turbolift Up One Deck (Keys [ and ])">Deck Lift []]</button>
+    <button class="tb-btn" id="btn-alert" title="Toggle Red Alert: Engineer Damage Control & Marine vs Breacher Defense (Key F)">Red Alert [F]</button>
+    <button class="tb-btn" id="btn-catalog" title="Cycle all 6 Construct Classes / 76 Unique 3D Models (Key C)">76-Unit Catalog [C]</button>
     <button class="tb-btn" id="btn-touch">Touch HUD</button>
     <button class="tb-btn" id="btn-vr" disabled>WebXR VR</button>
     <button class="tb-btn" id="btn-help">Controls [?]</button>
@@ -121,10 +124,10 @@
 
   <div id="help-card">
     <h3>1stPRTS COMMAND CONTROLS</h3>
-    <div><kbd>WASD</kbd> Move / Walk / Pilot &nbsp;|&nbsp; <kbd>Mouse</kbd> / <kbd>&larr;&rarr;</kbd> Look</div>
+    <div><kbd>Click Canvas</kbd> Lock Mouse 360&deg; Look (<kbd>Esc</kbd> unlocks) &nbsp;|&nbsp; <kbd>WASD</kbd> Walk / Pilot</div>
     <div><b>Tactical Defense (<kbd>L</kbd>):</b> <kbd>LMB</kbd>/<kbd>J</kbd> Plasma Lance · <kbd>Q</kbd> EMP Pulse (x2.4 Crit) · <kbd>Shift</kbd> Dash · <kbd>F</kbd> Fleet Strike · <kbd>H</kbd> Repair · <kbd>R</kbd> Retry</div>
-    <div><b>Seamless Sandbox RTS (<kbd>M</kbd>):</b> <kbd>E</kbd> Holo-Globe / Console (<kbd>1-4</kbd> Orders) · <kbd>B</kbd> Board/Exit Construct · <kbd>G</kbd> Astrogator 400km LEO Orbit · <kbd>F5</kbd>/<kbd>F9</kbd> Save/Load</div>
-    <div><b>76-Unit 3D Catalog (<kbd>C</kbd>):</b> Press repeatedly to cycle all 6 classes (24 Buildings, 10 Vehicles, 10 Naval, 8 Aircraft, 14 Spacecraft, 10 Stations)</div>
+    <div><b>Explorable Mega-Interiors &amp; Sandbox RTS (<kbd>M</kbd>):</b> Walk seamlessly through 1–420 interconnected rooms &amp; 12-role staffed crew! <kbd>N</kbd> Cycle Megaships (Citadel 72rm, Carrier 150rm, Dreadnought 420rm, Shipyard 420rm) · <kbd>[</kbd>/<kbd>]</kbd> Ride Turbolift · <kbd>F</kbd> Red Alert (Engineers repair + Marines fight breachers) · <kbd>E</kbd> Holo-Globe / Console (<kbd>1-4</kbd> Orders) · <kbd>B</kbd> Board/Exit · <kbd>G</kbd> 400km LEO Orbit · <kbd>F5</kbd>/<kbd>F9</kbd> Save/Load</div>
+    <div><b>76-Unit 3D Catalog (<kbd>C</kbd>):</b> Cycle all 6 classes (76 unique sculpted Solaris .obj models)</div>
     <div><b>Showcase Scenes:</b> Keys <kbd>1</kbd>–<kbd>9</kbd> &nbsp;|&nbsp; <b>Mobile:</b> Auto-switches to virtual touch controls</div>
   </div>
 
@@ -147,7 +150,43 @@
       console.error('[1prtsg web]', msg);
     }
 
+    function unlockWebAudio() {
+      try {
+        const ctxList = [];
+        if (window.Module && window.Module.SDL2 && window.Module.SDL2.audioContext) {
+          ctxList.push(window.Module.SDL2.audioContext);
+        }
+        if (window.SDL3 && window.SDL3.audioContext) {
+          ctxList.push(window.SDL3.audioContext);
+        }
+        if (window._rtsAudioContexts) {
+          for (const c of window._rtsAudioContexts) ctxList.push(c);
+        }
+        for (const ctx of ctxList) {
+          if (ctx && ctx.state === 'suspended' && ctx.resume) {
+            ctx.resume().catch(() => {});
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Track any WebAudio contexts created by SDL3 so first user click/keypress cleanly unlocks audio
+    (function hookAudioContext() {
+      const NativeAC = window.AudioContext || window.webkitAudioContext;
+      if (!NativeAC) return;
+      window._rtsAudioContexts = [];
+      const WrappedAC = function (...args) {
+        const inst = new NativeAC(...args);
+        window._rtsAudioContexts.push(inst);
+        return inst;
+      };
+      WrappedAC.prototype = NativeAC.prototype;
+      window.AudioContext = WrappedAC;
+      if (window.webkitAudioContext) window.webkitAudioContext = WrappedAC;
+    })();
+
     function sendSyntheticKey(key, code, keyCode) {
+      unlockWebAudio();
       canvasEl.focus();
       const opts = { key, code, keyCode, which: keyCode, bubbles: true, cancelable: true };
       window.dispatchEvent(new KeyboardEvent('keydown', opts));
@@ -162,6 +201,18 @@
       e.currentTarget.blur();
       sendSyntheticKey('m', 'KeyM', 77);
     });
+    document.getElementById('btn-ship').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('n', 'KeyN', 78);
+    });
+    document.getElementById('btn-lift').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey(']', 'BracketRight', 221);
+    });
+    document.getElementById('btn-alert').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('f', 'KeyF', 70);
+    });
     document.getElementById('btn-catalog').addEventListener('click', (e) => {
       e.currentTarget.blur();
       sendSyntheticKey('c', 'KeyC', 67);
@@ -170,7 +221,27 @@
       e.currentTarget.blur();
       document.getElementById('help-card').classList.toggle('open');
     });
-    canvasEl.addEventListener('pointerdown', () => canvasEl.focus());
+
+    canvasEl.addEventListener('pointerdown', (e) => {
+      unlockWebAudio();
+      canvasEl.focus();
+      if (e.pointerType === 'mouse' && e.button === 0 && document.pointerLockElement !== canvasEl) {
+        if (canvasEl.requestPointerLock) {
+          try {
+            const res = canvasEl.requestPointerLock();
+            if (res && typeof res.catch === 'function') res.catch(() => {});
+          } catch (_) {}
+        }
+      }
+    });
+    window.addEventListener('keydown', unlockWebAudio, { passive: true });
+    document.addEventListener('pointerlockchange', () => {
+      if (document.pointerLockElement === canvasEl) {
+        statusEl.textContent = 'Mouse Locked (360° Look Active — Press Esc to release) · M: Mega-Interiors | N: Next Ship | [/]: Turbolift | F: Red Alert';
+      } else {
+        statusEl.textContent = 'Click Canvas to Lock 360° Mouse Look · L: Tactical | M: Sandbox RTS | N: Next Megaship | [/]: Turbolift | F: Red Alert | C: 76-Unit Catalog';
+      }
+    });
 
     // Mount all loose external assets/, scripts/, mods/, and config/ files from relative HTTP paths
     // into Emscripten MEMFS (/game/...) using 16 parallel workers — zero baked assets in 1prtsg.wasm!

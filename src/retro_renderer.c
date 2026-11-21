@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
+#include "rts/crew.h"
 #include "rts/gfx.h"
+#include "rts/interior_gen.h"
 #include "rts/tactical_sim.h"
 #include <math.h>
 #include <stdio.h>
@@ -278,6 +280,12 @@ void rts_renderer_set_live_status(RtsRetroRenderer *rr, const char *mode_tag, co
     if (mode_tag) snprintf(rr->live_mode_tag, sizeof(rr->live_mode_tag), "%s", mode_tag);
     if (prompt) snprintf(rr->live_prompt, sizeof(rr->live_prompt), "%s", prompt);
     if (toast) snprintf(rr->live_toast, sizeof(rr->live_toast), "%s", toast);
+}
+
+void rts_renderer_set_active_interior(RtsRetroRenderer *rr, const RtsMegaInterior *mega, const RtsCrewDeckSim *crew) {
+    if (!rr) return;
+    rr->active_mega = mega;
+    rr->active_crew = crew;
 }
 
 static void draw_mesh(RtsRetroRenderer *rr, RtsGfxHandle sh, RtsGfxHandle mesh, RtsGfxHandle tex,
@@ -1270,6 +1278,222 @@ void rts_renderer_render_roster_class(RtsRetroRenderer *rr, const RtsWorld *worl
     rr->gfx.end_frame(rr->gfx.state);
 }
 
+static RtsVec4f minimap_room_color(const RtsInteriorRoom *rm) {
+    if (rm->damaged_pct > 1.0f || rm->breached) return (RtsVec4f){0.98f, 0.24f, 0.36f, 0.92f};
+    switch (rm->kind) {
+        case RTS_ROOM_WAR_ROOM:
+        case RTS_ROOM_BRIDGE_CIC:  return (RtsVec4f){0.96f, 0.78f, 0.28f, 0.92f};
+        case RTS_ROOM_TURBOLIFT:   return (RtsVec4f){1.0f, 0.62f, 0.22f, 0.92f};
+        case RTS_ROOM_REACTOR:
+        case RTS_ROOM_SHIELD_CORE: return (RtsVec4f){0.20f, 0.92f, 1.0f, 0.90f};
+        case RTS_ROOM_HANGAR:      return (RtsVec4f){0.26f, 0.60f, 0.96f, 0.88f};
+        case RTS_ROOM_MEDBAY:      return (RtsVec4f){0.36f, 0.98f, 0.78f, 0.88f};
+        case RTS_ROOM_ESCAPE_POD:  return (RtsVec4f){0.22f, 0.96f, 0.56f, 0.92f};
+        case RTS_ROOM_WEAPONS:
+        case RTS_ROOM_ARMORY:
+        case RTS_ROOM_BARRACKS:    return (RtsVec4f){0.56f, 0.44f, 0.88f, 0.85f};
+        case RTS_ROOM_CORRIDOR:
+        case RTS_ROOM_TRAM_STATION:return (RtsVec4f){0.24f, 0.36f, 0.52f, 0.88f};
+        default:                   return (RtsVec4f){0.18f, 0.28f, 0.44f, 0.85f};
+    }
+}
+
+static void draw_room_edge_wall(RtsRetroRenderer *rr, RtsMat4f vp, const RtsWorld *world, RtsFrameId fid,
+                                RtsQuatd frot, RtsVec3d cam_world, RtsVec3d mid_local, float span,
+                                bool along_x, bool has_door, bool panoramic, RtsVec4f wall_tint, RtsVec3f light, float time_s) {
+    float wall_h = 3.8f;
+    float thick = 0.24f;
+    if (has_door) {
+        /* Wide 3.6m walk-through doorway flanked by sleek left/right bulkhead jambs & glowing transom */
+        float door_w = fminf(3.6f, span * 0.48f);
+        float side_w = fmaxf(0.4f, 0.5f * (span - door_w));
+        float off = 0.5f * (door_w + side_w);
+        for (int s = -1; s <= 1; s += 2) {
+            RtsVec3d p = mid_local;
+            if (along_x) p.x += (double)s * (double)off; else p.z += (double)s * (double)off;
+            p.y += wall_h * 0.5;
+            RtsVec3d pw;
+            rts_interior_local_to_world(&world->interiors, fid, p, &pw);
+            RtsVec3f sc = along_x ? (RtsVec3f){side_w, wall_h, thick} : (RtsVec3f){thick, wall_h, side_w};
+            draw_box(rr, vp, rts_v3d_relative_f(pw, cam_world), sc, frot, rr->tex_hull_blue, wall_tint, light, time_s);
+        }
+        RtsVec3d tp = mid_local;
+        tp.y += wall_h - 0.38;
+        RtsVec3d tw;
+        rts_interior_local_to_world(&world->interiors, fid, tp, &tw);
+        RtsVec3f tsc = along_x ? (RtsVec3f){door_w + 0.2f, 0.72f, thick + 0.08f} : (RtsVec3f){thick + 0.08f, 0.72f, door_w + 0.2f};
+        draw_box(rr, vp, rts_v3d_relative_f(tw, cam_world), tsc, frot, rr->tex_hull_blue, (RtsVec4f){0.36f, 0.94f, 1.0f, 1.0f}, light, time_s);
+    } else if (panoramic) {
+        /* Waist-high armored viewport sill so planetary horizon / orbital fleets remain visible outside */
+        RtsVec3d p = mid_local;
+        p.y += 0.48;
+        RtsVec3d pw;
+        rts_interior_local_to_world(&world->interiors, fid, p, &pw);
+        RtsVec3f sc = along_x ? (RtsVec3f){span, 0.96f, thick} : (RtsVec3f){thick, 0.96f, span};
+        draw_box(rr, vp, rts_v3d_relative_f(pw, cam_world), sc, frot, rr->tex_hull_blue, (RtsVec4f){0.62f, 0.76f, 0.92f, 1.0f}, light, time_s);
+    } else {
+        RtsVec3d p = mid_local;
+        p.y += wall_h * 0.5;
+        RtsVec3d pw;
+        rts_interior_local_to_world(&world->interiors, fid, p, &pw);
+        RtsVec3f sc = along_x ? (RtsVec3f){span, wall_h, thick} : (RtsVec3f){thick, wall_h, span};
+        draw_box(rr, vp, rts_v3d_relative_f(pw, cam_world), sc, frot, rr->tex_hull_blue, wall_tint, light, time_s);
+    }
+}
+
+static void draw_room_specific_props(RtsRetroRenderer *rr, RtsMat4f vp, const RtsWorld *world,
+                                     const RtsInteriorRoom *rm, RtsQuatd frot, RtsVec3d cam_world, RtsVec3f light, float time_s) {
+    double cx = 0.5 * (rm->local_bounds.min.x + rm->local_bounds.max.x);
+    double cz = 0.5 * (rm->local_bounds.min.z + rm->local_bounds.max.z);
+    RtsVec3d center_w;
+    rts_interior_local_to_world(&world->interiors, rm->frame_id, rts_v3d(cx, rm->local_bounds.min.y, cz), &center_w);
+    RtsVec3f crel = rts_v3d_relative_f(center_w, cam_world);
+
+    if (rm->kind == RTS_ROOM_REACTOR) {
+        /* Towering Tokamak Fusion Reactor Core + Rotating Energy Containment Rings */
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(frot, (RtsVec3f){crel.x, crel.y + 0.35f, crel.z}, (RtsVec3f){1.9f, 0.45f, 1.9f}),
+                  (RtsVec4f){0.42f, 0.54f, 0.72f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(frot, (RtsVec3f){crel.x, crel.y + 2.0f, crel.z}, (RtsVec3f){0.78f, 1.65f, 0.78f}),
+                  (RtsVec4f){0.22f, 0.96f, 1.0f, 0.92f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+        RtsQuatd r1 = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 1.1),
+                                   rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.32));
+        RtsQuatd r2 = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), -time_s * 0.9),
+                                   rts_quat_from_axis_angle(rts_v3d(0, 0, 1), 0.36));
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(r1, (RtsVec3f){crel.x, crel.y + 1.8f, crel.z}, (RtsVec3f){1.65f, 1.65f, 1.65f}),
+                  (RtsVec4f){1.0f, 0.84f, 0.28f, 0.98f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(r2, (RtsVec3f){crel.x, crel.y + 2.3f, crel.z}, (RtsVec3f){1.85f, 1.85f, 1.85f}),
+                  (RtsVec4f){0.25f, 0.96f, 1.0f, 0.98f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+    } else if (rm->kind == RTS_ROOM_SHIELD_CORE) {
+        draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(frot, (RtsVec3f){crel.x, crel.y + 1.8f, crel.z}, (RtsVec3f){1.45f, 1.45f, 1.45f}),
+                  (RtsVec4f){0.22f, 0.94f, 1.0f, 0.72f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+    } else if (rm->kind == RTS_ROOM_HANGAR) {
+        /* Illuminated landing pad markings + proportionally scaled sculpted Solaris Starfighter */
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(frot, (RtsVec3f){crel.x, crel.y + 0.08f, crel.z - 0.5f}, (RtsVec3f){2.85f, 2.85f, 2.85f}),
+                  (RtsVec4f){1.0f, 0.84f, 0.30f, 0.92f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+        RtsGfxHandle fighter = rts_renderer_get_mesh(rr, "models/air_starfighter.obj");
+        if (fighter == RTS_GFX_INVALID) fighter = rr->mesh_starfighter;
+        draw_mesh(rr, rr->sh_mesh, fighter, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 0.55), (RtsVec3f){crel.x - 0.4f, crel.y + 0.72f, crel.z - 0.6f}, (RtsVec3f){0.82f, 0.82f, 0.82f}),
+                  (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+    } else if (rm->kind == RTS_ROOM_TURBOLIFT) {
+        /* Champagne-Gold & Cyan Vertical Turbolift Shaft Core */
+        draw_box(rr, vp, (RtsVec3f){crel.x, crel.y + 1.9f, crel.z - 2.6f}, (RtsVec3f){2.2f, 3.8f, 1.2f}, frot,
+                 rr->tex_hull_blue, (RtsVec4f){0.96f, 0.80f, 0.36f, 1.0f}, light, time_s);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(frot, (RtsVec3f){crel.x, crel.y + 0.12f, crel.z}, (RtsVec3f){1.75f, 1.75f, 1.75f}),
+                  (RtsVec4f){1.0f, 0.84f, 0.32f, 0.95f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+    } else if (rm->kind == RTS_ROOM_MEDBAY) {
+        draw_box(rr, vp, (RtsVec3f){crel.x - 1.8f, crel.y + 0.65f, crel.z}, (RtsVec3f){1.1f, 1.1f, 2.2f}, frot,
+                 rr->tex_hull_blue, (RtsVec4f){0.76f, 1.0f, 0.94f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){crel.x + 1.8f, crel.y + 0.65f, crel.z}, (RtsVec3f){1.1f, 1.1f, 2.2f}, frot,
+                 rr->tex_hull_blue, (RtsVec4f){0.76f, 1.0f, 0.94f, 1.0f}, light, time_s);
+    } else if (rm->kind == RTS_ROOM_ARMORY || rm->kind == RTS_ROOM_BARRACKS) {
+        draw_box(rr, vp, (RtsVec3f){crel.x - 2.4f, crel.y + 1.1f, crel.z - 1.5f}, (RtsVec3f){0.9f, 2.2f, 2.4f}, frot,
+                 rr->tex_hull_blue, (RtsVec4f){0.42f, 0.92f, 0.74f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){crel.x + 2.4f, crel.y + 1.1f, crel.z - 1.5f}, (RtsVec3f){0.9f, 2.2f, 2.4f}, frot,
+                 rr->tex_hull_blue, (RtsVec4f){0.42f, 0.92f, 0.74f, 1.0f}, light, time_s);
+    } else if (rm->kind == RTS_ROOM_CARGO || rm->kind == RTS_ROOM_ENGINEERING) {
+        draw_box(rr, vp, (RtsVec3f){crel.x - 1.9f, crel.y + 0.85f, crel.z - 1.2f}, (RtsVec3f){1.6f, 1.6f, 1.8f}, frot,
+                 rr->tex_hull_blue, (RtsVec4f){0.86f, 0.74f, 0.44f, 1.0f}, light, time_s);
+    } else if (rm->kind == RTS_ROOM_CORRIDOR || rm->kind == RTS_ROOM_TRAM_STATION) {
+        /* Signature Solaris Illuminated Deck Wayfinding Stripe */
+        double rw = rm->local_bounds.max.x - rm->local_bounds.min.x;
+        draw_box(rr, vp, (RtsVec3f){crel.x, crel.y + 0.03f, crel.z}, (RtsVec3f){(float)rw * 0.92f, 0.05f, 0.34f}, frot,
+                 rr->tex_crt_console, (RtsVec4f){0.28f, 0.96f, 1.0f, 1.0f}, light, time_s);
+    }
+}
+
+static void draw_deck_blueprint_minimap(RtsRetroRenderer *rr, RtsMat4f ortho, const RtsWorld *world, RtsFrameId fid) {
+    float w = (float)rr->width;
+    float mw = 272.0f;
+    float mh = 194.0f;
+    float mx = w - mw - 16.0f;
+    float my = 72.0f;
+    hud_border_box(rr, ortho, mx, my, mw, mh,
+                   (RtsVec4f){0.02f, 0.05f, 0.12f, 0.90f},
+                   (rr->active_crew && rr->active_crew->red_alert) ? (RtsVec4f){1.0f, 0.28f, 0.42f, 0.98f} : (RtsVec4f){0.24f, 0.92f, 1.0f, 0.94f});
+
+    char hdr[64];
+    if (rr->active_mega && rr->active_mega->total_rooms > 0u) {
+        snprintf(hdr, sizeof(hdr), "DECK %u/%u | %u ROOMS",
+                 (unsigned)(rr->active_mega->active_deck + 1u),
+                 (unsigned)rr->active_mega->deck_count,
+                 (unsigned)rr->active_mega->total_rooms);
+    } else {
+        snprintf(hdr, sizeof(hdr), "DECK BLUEPRINT MAP");
+    }
+    hud_text(rr, ortho, mx + 10.0f, my + 8.0f, 1.0f, (RtsVec4f){1.0f, 0.86f, 0.36f, 1.0f}, hdr);
+
+    char sub[64];
+    size_t active_c = (rr->active_crew) ? rr->active_crew->count : 0u;
+    uint32_t total_c = (rr->active_mega) ? rr->active_mega->total_crew_capacity : 0u;
+    snprintf(sub, sizeof(sub), "STAFF %zu LIVE / %u%s",
+             active_c, (unsigned)total_c,
+             (rr->active_crew && rr->active_crew->red_alert) ? " [ALERT]" : "");
+    hud_text(rr, ortho, mx + 10.0f, my + 24.0f, 1.0f,
+             (rr->active_crew && rr->active_crew->red_alert) ? (RtsVec4f){1.0f, 0.38f, 0.46f, 1.0f} : (RtsVec4f){0.36f, 0.98f, 0.90f, 1.0f}, sub);
+
+    /* Compute bounding rectangle of all hydrated rooms on the active deck */
+    double minx = 1e9, maxx = -1e9, minz = 1e9, maxz = -1e9;
+    int rcnt = 0;
+    for (size_t i = 0; i < world->interiors.room_count; ++i) {
+        const RtsInteriorRoom *rm = &world->interiors.rooms[i];
+        if (!rm->active || rm->frame_id != fid) continue;
+        if (rm->local_bounds.min.x < minx) minx = rm->local_bounds.min.x;
+        if (rm->local_bounds.max.x > maxx) maxx = rm->local_bounds.max.x;
+        if (rm->local_bounds.min.z < minz) minz = rm->local_bounds.min.z;
+        if (rm->local_bounds.max.z > maxz) maxz = rm->local_bounds.max.z;
+        rcnt++;
+    }
+    if (rcnt == 0 || maxx <= minx || maxz <= minz) return;
+
+    float pad_l = mx + 12.0f;
+    float pad_t = my + 42.0f;
+    float box_w = mw - 24.0f;
+    float box_h = mh - 68.0f;
+    float sc = fminf(box_w / (float)(maxx - minx), box_h / (float)(maxz - minz));
+    float ox = pad_l + 0.5f * (box_w - (float)(maxx - minx) * sc);
+    float oy = pad_t + 0.5f * (box_h - (float)(maxz - minz) * sc);
+
+    for (size_t i = 0; i < world->interiors.room_count; ++i) {
+        const RtsInteriorRoom *rm = &world->interiors.rooms[i];
+        if (!rm->active || rm->frame_id != fid) continue;
+        float rx = ox + (float)(rm->local_bounds.min.x - minx) * sc;
+        float ry = oy + (float)(rm->local_bounds.min.z - minz) * sc;
+        float rw = (float)(rm->local_bounds.max.x - rm->local_bounds.min.x) * sc;
+        float rh = (float)(rm->local_bounds.max.z - rm->local_bounds.min.z) * sc;
+        hud_quad(rr, ortho, rx + 1.5f, ry + 1.5f, fmaxf(2.0f, rw - 3.0f), fmaxf(2.0f, rh - 3.0f), minimap_room_color(rm));
+        /* Bright cyan doorway ticks where rooms connect */
+        if (rm->door_mask & RTS_DOOR_E) hud_quad(rr, ortho, rx + rw - 2.0f, ry + rh * 0.35f, 4.0f, fmaxf(2.0f, rh * 0.3f), (RtsVec4f){0.62f, 0.98f, 1.0f, 0.95f});
+        if (rm->door_mask & RTS_DOOR_S) hud_quad(rr, ortho, rx + rw * 0.35f, ry + rh - 2.0f, fmaxf(2.0f, rw * 0.3f), 4.0f, (RtsVec4f){0.62f, 0.98f, 1.0f, 0.95f});
+    }
+
+    /* Live Staffed Crew Dots on Minimap */
+    if (rr->active_crew) {
+        for (size_t i = 0; i < rr->active_crew->count; ++i) {
+            const RtsCrewAgent *a = &rr->active_crew->agents[i];
+            if (!a->active) continue;
+            float ax = ox + (float)(a->local_pos.x - minx) * sc;
+            float ay = oy + (float)(a->local_pos.z - minz) * sc;
+            RtsVec4f dot_c = (a->faction_id == 2u) ? (RtsVec4f){1.0f, 0.24f, 0.36f, 1.0f} : (RtsVec4f){0.78f, 1.0f, 0.96f, 0.95f};
+            hud_quad(rr, ortho, ax - 1.8f, ay - 1.8f, 3.6f, 3.6f, dot_c);
+        }
+    }
+
+    /* Commander Pulsing White-Gold Marker */
+    float px = ox + (float)(world->commander.local_pos.x - minx) * sc;
+    float py = oy + (float)(world->commander.local_pos.z - minz) * sc;
+    hud_quad(rr, ortho, px - 3.5f, py - 3.5f, 7.0f, 7.0f, (RtsVec4f){1.0f, 0.96f, 0.38f, 1.0f});
+
+    hud_text(rr, ortho, mx + 10.0f, my + mh - 18.0f, 1.0f, (RtsVec4f){0.82f, 0.92f, 1.0f, 1.0f}, "[/] LIFT | N SHIP | F ALERT");
+}
+
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s) {
     if (!rr || !rr->initialized || !world) return;
     float aspect = (float)rr->width / (float)(rr->height > 0 ? rr->height : 1);
@@ -1283,6 +1507,7 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
     double alt_m = rts_v3d_len(cam_world) - world->planet.radius_m;
     if (alt_m < 0.0) alt_m = 0.0;
     bool in_orbit = (alt_m > 80000.0);
+    bool red_alert = (rr->active_crew && rr->active_crew->red_alert);
 
     RtsVec3f fwd = {
         (float)(sin(world->commander.yaw_rad) * cos(world->commander.pitch_rad)),
@@ -1291,11 +1516,12 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
     };
     RtsMat4f vp = rts_mat4_mul(proj, rts_mat4_look_at((RtsVec3f){0, 0, 0}, fwd, (RtsVec3f){0, 1, 0}));
     rr->cur_cam_pos = (RtsVec3f){0, 0, 0};
-    rr->cur_fog_color = in_orbit ? (RtsVec4f){0.04f, 0.09f, 0.18f, 0.16f} : (RtsVec4f){0.22f, 0.34f, 0.46f, 0.48f};
+    rr->cur_fog_color = red_alert ? (RtsVec4f){0.26f, 0.06f, 0.10f, 0.38f}
+                      : (in_orbit ? (RtsVec4f){0.04f, 0.09f, 0.18f, 0.16f} : (RtsVec4f){0.22f, 0.34f, 0.46f, 0.48f});
 
     rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height,
                         in_orbit ? (RtsVec4f){0.02f, 0.02f, 0.06f, 1.0f} : (RtsVec4f){0.04f, 0.09f, 0.18f, 1.0f});
-    draw_sky_dome(rr, vp, (RtsVec3f){0, 0, 0}, sun, in_orbit ? 1.0f : 0.0f, time_s);
+    draw_sky_dome(rr, vp, (RtsVec3f){0, 0, 0}, sun, red_alert ? 2.0f : (in_orbit ? 1.0f : 0.0f), time_s);
 
     /* Surface terrain apron when near planetary surface, or illuminated Helios Prime limb when in LEO orbit */
     if (!in_orbit) {
@@ -1304,14 +1530,17 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
                   rts_mat4_from_quat_trs(idq, ground_rel, (RtsVec3f){1.2f, 1.0f, 1.2f}),
                   (RtsVec4f){0.86f, 0.90f, 0.96f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
     } else {
-        RtsQuatd orb_rot = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.98),
+        RtsQuatd orb_rot = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.72),
                                         rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 1.35 + time_s * 0.01));
         draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_planet_surface, vp,
-                  rts_mat4_from_quat_trs(orb_rot, (RtsVec3f){-70.0f, -255.0f, -95.0f}, (RtsVec3f){235.0f, 235.0f, 235.0f}),
-                  (RtsVec4f){0.82f, 0.90f, 0.98f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+                  rts_mat4_from_quat_trs(orb_rot, (RtsVec3f){-95.0f, -150.0f, -260.0f}, (RtsVec3f){195.0f, 195.0f, 195.0f}),
+                  (RtsVec4f){0.86f, 0.94f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(orb_rot, (RtsVec3f){-95.0f, -150.0f, -260.0f}, (RtsVec3f){201.0f, 201.0f, 201.0f}),
+                  (RtsVec4f){0.24f, 0.88f, 1.0f, 0.34f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
     }
 
-    /* Render Hydrated Enterable Interior Architecture & Physical 3D Consoles when inside a construct */
+    /* Render Hydrated Multi-Room Interior Architecture, Ceilings, Doorways, Props, Consoles & All Staffed 12-Role Crew */
     bool inside_construct = (world->commander.frame_id != world->planet_frame_id &&
                              world->commander.occupied_entity_id != 0u);
     if (inside_construct) {
@@ -1328,22 +1557,66 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
             double cz = 0.5 * (rm->local_bounds.min.z + rm->local_bounds.max.z);
             double rw = rm->local_bounds.max.x - rm->local_bounds.min.x;
             double rl = rm->local_bounds.max.z - rm->local_bounds.min.z;
+            RtsVec4f floor_tint = (rm->damaged_pct > 1.0f) ? (RtsVec4f){1.0f, 0.55f, 0.52f, 1.0f} : (RtsVec4f){0.88f, 0.94f, 1.0f, 1.0f};
+            RtsVec4f wall_tint = red_alert ? (RtsVec4f){0.92f, 0.62f, 0.66f, 1.0f} : (RtsVec4f){0.80f, 0.88f, 0.98f, 1.0f};
+
             RtsVec3d floor_w;
             rts_interior_local_to_world(&world->interiors, rm->frame_id, rts_v3d(cx, rm->local_bounds.min.y - 0.15, cz), &floor_w);
-            RtsVec3f frel = rts_v3d_relative_f(floor_w, cam_world);
-            draw_box(rr, vp, frel, (RtsVec3f){(float)rw, 0.30f, (float)rl}, frot, rr->tex_deck_floor,
-                     (RtsVec4f){0.88f, 0.94f, 1.0f, 1.0f}, light, time_s);
+            draw_box(rr, vp, rts_v3d_relative_f(floor_w, cam_world), (RtsVec3f){(float)rw, 0.30f, (float)rl}, frot, rr->tex_deck_floor,
+                     floor_tint, light, time_s);
 
-            RtsVec3d arch_w;
-            rts_interior_local_to_world(&world->interiors, rm->frame_id, rts_v3d(cx, rm->local_bounds.min.y, cz), &arch_w);
-            RtsVec3f arel = rts_v3d_relative_f(arch_w, cam_world);
-            float asc_x = rts_clampf((float)rw / 16.0f, 0.55f, 1.35f);
-            draw_mesh(rr, rr->sh_mesh, rr->mesh_arch, rr->tex_hull_blue, vp,
-                      rts_mat4_from_quat_trs(frot, arel, (RtsVec3f){asc_x, 0.92f, 1.0f}),
-                      (RtsVec4f){0.86f, 0.92f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+            /* Enclosed overhead Solaris ceiling deck slab with glowing ceiling light batten */
+            if (rm->kind != RTS_ROOM_GENERIC || rm->door_mask != 0u) {
+                RtsVec3d ceil_w;
+                rts_interior_local_to_world(&world->interiors, rm->frame_id, rts_v3d(cx, rm->local_bounds.min.y + 3.92, cz), &ceil_w);
+                RtsVec4f ceil_tint = red_alert ? (RtsVec4f){0.42f, 0.14f, 0.18f, 1.0f} : (RtsVec4f){0.28f, 0.38f, 0.54f, 1.0f};
+                draw_box(rr, vp, rts_v3d_relative_f(ceil_w, cam_world), (RtsVec3f){(float)rw, 0.24f, (float)rl}, frot, rr->tex_deck_floor,
+                         ceil_tint, light, time_s);
+                RtsVec3d strip_w;
+                rts_interior_local_to_world(&world->interiors, rm->frame_id, rts_v3d(cx, rm->local_bounds.min.y + 3.76, cz), &strip_w);
+                RtsVec4f strip_c = red_alert ? (RtsVec4f){1.0f, 0.26f, 0.36f, 1.0f} : (RtsVec4f){0.38f, 0.94f, 1.0f, 1.0f};
+                draw_box(rr, vp, rts_v3d_relative_f(strip_w, cam_world), (RtsVec3f){(float)rw * 0.52f, 0.08f, 0.42f}, frot, rr->tex_crt_console,
+                         strip_c, light, time_s);
+            }
+
+            /* Orient vaulted Solaris arch ribs accurately inside each room (interior_arch.obj is 20.44m x 10.23m) */
+            if (rm->kind != RTS_ROOM_TURBOLIFT) {
+                RtsVec3d arch_w;
+                rts_interior_local_to_world(&world->interiors, rm->frame_id, rts_v3d(cx, rm->local_bounds.min.y, cz), &arch_w);
+                bool corr_rot = (rm->kind == RTS_ROOM_CORRIDOR || rm->kind == RTS_ROOM_TRAM_STATION);
+                RtsQuatd arot = corr_rot ? rts_quat_mul(frot, rts_quat_from_axis_angle(rts_v3d(0, 1, 0), RTS_PI * 0.5)) : frot;
+                float span_m = corr_rot ? (float)rl : (float)rw;
+                float asc_x = rts_clampf(span_m / 22.2f, 0.22f, 0.65f);
+                draw_mesh(rr, rr->sh_mesh, rr->mesh_arch, rr->tex_hull_blue, vp,
+                          rts_mat4_from_quat_trs(arot, rts_v3d_relative_f(arch_w, cam_world), (RtsVec3f){asc_x, 0.376f, 0.72f}),
+                          wall_tint, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+            }
+
+            /* Doorway-pierced bulkheads (only drawn on mega-rooms with door_mask or non-generic kind) */
+            if (rm->kind != RTS_ROOM_GENERIC || rm->door_mask != 0u) {
+                bool pano = (rm->kind == RTS_ROOM_WAR_ROOM || rm->kind == RTS_ROOM_BRIDGE_CIC || rm->kind == RTS_ROOM_HANGAR);
+                /* Draw North & West walls for every cell, plus outer South/East walls on perimeter to avoid Z-fighting */
+                draw_room_edge_wall(rr, vp, world, rm->frame_id, frot, cam_world,
+                                    rts_v3d(cx, rm->local_bounds.min.y, rm->local_bounds.min.z),
+                                    (float)rw, true, (rm->door_mask & RTS_DOOR_N) != 0u, pano, wall_tint, light, time_s);
+                draw_room_edge_wall(rr, vp, world, rm->frame_id, frot, cam_world,
+                                    rts_v3d(rm->local_bounds.min.x, rm->local_bounds.min.y, cz),
+                                    (float)rl, false, (rm->door_mask & RTS_DOOR_W) != 0u, pano, wall_tint, light, time_s);
+                if ((rm->door_mask & RTS_DOOR_S) == 0u) {
+                    draw_room_edge_wall(rr, vp, world, rm->frame_id, frot, cam_world,
+                                        rts_v3d(cx, rm->local_bounds.min.y, rm->local_bounds.max.z),
+                                        (float)rw, true, false, pano, wall_tint, light, time_s);
+                }
+                if ((rm->door_mask & RTS_DOOR_E) == 0u) {
+                    draw_room_edge_wall(rr, vp, world, rm->frame_id, frot, cam_world,
+                                        rts_v3d(rm->local_bounds.max.x, rm->local_bounds.min.y, cz),
+                                        (float)rl, false, false, pano, wall_tint, light, time_s);
+                }
+                draw_room_specific_props(rr, vp, world, rm, frot, cam_world, light, time_s);
+            }
         }
 
-        /* Physical Interactive Consoles (Holo-Globe, Factory Terminal, Pilot Seat, Escape Pod, Gunner) */
+        /* Physical Interactive Consoles (Holo-Globe, Factory Terminal, Pilot Seat, Escape Pod, Gunner, Turbolift) */
         for (size_t c = 0; c < world->interiors.console_count; ++c) {
             const RtsConsoleStation *cs = &world->interiors.consoles[c];
             if (!cs->active || cs->frame_id != world->commander.frame_id) continue;
@@ -1367,19 +1640,49 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
                           (RtsVec4f){1.0f, 0.84f, 0.30f, 0.96f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
             } else {
                 RtsVec4f glow = (cs->type == RTS_CONSOLE_ESCAPE_POD) ? (RtsVec4f){0.28f, 1.0f, 0.74f, 1.0f}
+                              : ((cs->type == RTS_CONSOLE_TURBOLIFT) ? (RtsVec4f){1.0f, 0.84f, 0.30f, 1.0f}
                               : ((cs->type == RTS_CONSOLE_FACTORY_TERMINAL) ? (RtsVec4f){1.0f, 0.82f, 0.32f, 1.0f}
-                              : (RtsVec4f){0.28f, 0.94f, 1.0f, 1.0f});
+                              : (RtsVec4f){0.28f, 0.94f, 1.0f, 1.0f}));
                 draw_box(rr, vp, (RtsVec3f){crel.x, crel.y - 0.35f, crel.z}, (RtsVec3f){1.3f, 1.1f, 0.8f}, frot,
                          rr->tex_crt_console, glow, light, time_s);
             }
         }
 
-        /* Crew officers standing at posts inside the War Room / Bridge */
-        RtsVec3d crw_w;
-        rts_interior_local_to_world(&world->interiors, world->commander.frame_id, rts_v3d(-3.2, 0.0, -4.0), &crw_w);
-        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
-                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 0.6), rts_v3d_relative_f(crw_w, cam_world), (RtsVec3f){1.05f, 1.05f, 1.05f}),
-                  (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        /* Render All Live Staffed 12-Role Crew Agents (or fallback single officer if no active crew sim) */
+        if (rr->active_crew && rr->active_crew->entity_id == world->commander.occupied_entity_id && rr->active_crew->count > 0u) {
+            for (size_t i = 0; i < rr->active_crew->count; ++i) {
+                const RtsCrewAgent *a = &rr->active_crew->agents[i];
+                if (!a->active) continue;
+                double bob = (a->state == RTS_CREW_AT_STATION) ? 0.0 : (fabs(sin((double)a->anim_phase)) * 0.06);
+                RtsVec3d aw;
+                rts_interior_local_to_world(&world->interiors, world->commander.frame_id,
+                                            rts_v3d(a->local_pos.x, a->local_pos.y + bob, a->local_pos.z), &aw);
+                RtsVec3f arel = rts_v3d_relative_f(aw, cam_world);
+                RtsGfxHandle ctex = (a->faction_id == 2u) ? rr->tex_hull_red : rr->tex_hull_blue;
+                RtsVec4f ctint = rts_crew_role_tint(a->role, a->faction_id);
+                draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, ctex, vp,
+                          rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), a->yaw_rad), arel, (RtsVec3f){1.06f, 1.06f, 1.06f}),
+                          ctint, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+                /* Engineer Weld-Arc (within 3.8m of target core) / Marine Counter-Boarding Fire (within 7.0m) */
+                double tdist = rts_v3d_dist(a->local_pos, a->target_pos);
+                if ((a->state == RTS_CREW_REPAIRING && tdist < 3.8) || (a->state == RTS_CREW_COMBAT && tdist < 7.0)) {
+                    RtsVec3d tw;
+                    rts_interior_local_to_world(&world->interiors, world->commander.frame_id,
+                                                rts_v3d(a->target_pos.x, a->target_pos.y + 1.45, a->target_pos.z), &tw);
+                    RtsVec3f trel = rts_v3d_relative_f(tw, cam_world);
+                    RtsVec4f bcol = (a->state == RTS_CREW_REPAIRING) ? (RtsVec4f){1.0f, 0.86f, 0.28f, 0.95f}
+                                  : ((a->faction_id == 2u) ? (RtsVec4f){1.0f, 0.24f, 0.42f, 0.95f} : (RtsVec4f){0.24f, 0.96f, 1.0f, 0.95f});
+                    draw_plasma_beam(rr, vp, (RtsVec3f){arel.x, arel.y + 1.25f, arel.z}, trel, 0.036f, bcol, time_s);
+                }
+            }
+        } else {
+            RtsVec3d crw_w;
+            rts_interior_local_to_world(&world->interiors, world->commander.frame_id, rts_v3d(-3.2, 0.0, -4.0), &crw_w);
+            draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
+                      rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 0.6), rts_v3d_relative_f(crw_w, cam_world), (RtsVec3f){1.05f, 1.05f, 1.05f}),
+                      (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        }
     }
 
     /* Render Every Live World Construct Using Its Own Dedicated Unique Sculpted .OBJ Mesh! */
@@ -1404,9 +1707,13 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
         draw_mesh(rr, rr->sh_mesh, mesh, tex, vp, model, (RtsVec4f){1, 1, 1, 1}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
     }
 
-    /* Seamless Sandbox RTS HUD: Location/Room/Altitude + Resources + Holo-Globe Command Bar + Toast */
+    /* Seamless Sandbox RTS HUD: Location/Room/Altitude + Resources + Diegetic Deck Blueprint Minimap + Holo-Globe Bar */
     float w = (float)rr->width, h = (float)rr->height;
     RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+
+    if (inside_construct) {
+        draw_deck_blueprint_minimap(rr, ortho, world, world->commander.frame_id);
+    }
 
     const RtsEntity *occ = rts_world_get_entity_const(world, world->commander.occupied_entity_id);
     const RtsInteriorRoom *room = rts_interior_find_room_at(&world->interiors, world->commander.frame_id, world->commander.local_pos);
@@ -1414,7 +1721,7 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
 
     char loc_banner[256];
     if (occ && room) {
-        snprintf(loc_banner, sizeof(loc_banner), "%.48s - %.36s [ALT %.1fKM]", occ->name, room->name, alt_m / 1000.0);
+        snprintf(loc_banner, sizeof(loc_banner), "%.44s - %.36s [ALT %.1fKM]", occ->name, room->name, alt_m / 1000.0);
     } else if (occ) {
         snprintf(loc_banner, sizeof(loc_banner), "%.48s [INTERIOR DECK | ALT %.1fKM]", occ->name, alt_m / 1000.0);
     } else {
@@ -1424,9 +1731,17 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
     upper_trunc_copy(loc_upper, sizeof(loc_upper), loc_banner, 84);
 
     char sub_line[220];
-    snprintf(sub_line, sizeof(sub_line), "%.64s | ORE:%.0f FUEL:%.0f PWR:%.0fMW | ENTITIES:%zu",
-             rr->live_mode_tag[0] ? rr->live_mode_tag : "SEAMLESS SANDBOX RTS",
-             world->resources_ore, world->resources_fuel, world->resources_power, world->entity_count);
+    if (inside_construct && rr->active_mega && rr->active_mega->entity_id == world->commander.occupied_entity_id) {
+        snprintf(sub_line, sizeof(sub_line), "%.42s | DECK %u/%u | %u ROOMS | %u CREW | ORE:%.0f",
+                 rr->live_mode_tag[0] ? rr->live_mode_tag : "EXPLORABLE MEGA-INTERIOR",
+                 (unsigned)(rr->active_mega->active_deck + 1u), (unsigned)rr->active_mega->deck_count,
+                 (unsigned)rr->active_mega->total_rooms, (unsigned)rr->active_mega->total_crew_capacity,
+                 world->resources_ore);
+    } else {
+        snprintf(sub_line, sizeof(sub_line), "%.64s | ORE:%.0f FUEL:%.0f PWR:%.0fMW | ENTITIES:%zu",
+                 rr->live_mode_tag[0] ? rr->live_mode_tag : "SEAMLESS SANDBOX RTS",
+                 world->resources_ore, world->resources_fuel, world->resources_power, world->entity_count);
+    }
 
     /* Holo-Globe Active Command Menu or Console Interaction Prompt */
     if (world->commander.at_holo_globe) {
@@ -1452,7 +1767,7 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
 
     const char *toast = rr->live_toast[0]
         ? rr->live_toast
-        : "WASD: WALK/PILOT | E: INTERACT/BOARD | G: ASTROGATOR 400KM ORBIT | F5/F9: SAVE/LOAD | L: COMBAT | 1-9: SCENES";
+        : "WASD: WALK ROOMS | [/]: TURBOLIFT DECK | N: NEXT MEGASHIP | F: RED ALERT | E: CONSOLE | B: BOARD | G: 400KM ORBIT";
     render_hud_common(rr, world, input, loc_upper, sub_line, toast, false);
     rr->gfx.end_frame(rr->gfx.state);
 }

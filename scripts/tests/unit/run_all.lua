@@ -50,7 +50,13 @@ for i = 1, #registry.all do
         end
         check(has_ep, "Escape-pod construct " .. bp.id .. " missing ESCAPE_POD console")
     end
+    local rm_total, dk_cnt, cols, rows, conn = engine.interior.mega_stats(bp.id)
+    check(rm_total >= 1 and dk_cnt >= 1 and cols >= 1 and rows >= 1 and conn == true,
+          "Mega-interior connectivity failed for " .. bp.id)
 end
+check(engine.interior.mega_stats("nonexistent_bp") == nil, "Unknown mega_stats must return nil")
+local dr_rm, dr_dk, _, _, dr_conn = engine.interior.mega_stats("space_command_dreadnought")
+check(dr_rm == 420 and dr_dk == 20 and dr_conn == true, "Dreadnought must generate 420 connected rooms across 20 decks")
 check(interiors.build_layout({ id = "nonexistent_bp" }) == nil, "Unknown blueprint should return nil layout")
 local r0, c0, p0 = interiors.hydrate_entity(99999, registry.all[1])
 check(r0 == 0 and c0 == 0 and p0 == 0, "Invalid entity hydration should return 0,0,0")

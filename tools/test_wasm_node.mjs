@@ -74,7 +74,7 @@ const sandbox = {
         }
         finished = true;
         clearTimeout(timer);
-        console.log('[wasm-smoke] PASS: 1prtsg.wasm booted cleanly, mounted', manifest.files.length, 'loose files, and passed all 19 game scenarios!');
+        console.log('[wasm-smoke] PASS: 1prtsg.wasm booted cleanly, mounted', manifest.files.length, 'loose files, and passed all 20 game scenarios!');
         process.exit(0);
       } catch (err) {
         finished = true;

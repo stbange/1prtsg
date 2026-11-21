@@ -134,6 +134,14 @@ uint32_t rts_interior_add_room(RtsInteriorSystem *sys, RtsFrameId frame_id, cons
     return r->id;
 }
 
+RtsInteriorRoom *rts_interior_get_room(RtsInteriorSystem *sys, uint32_t room_id) {
+    if (!sys || room_id == 0u || room_id > sys->room_count) {
+        return NULL;
+    }
+    RtsInteriorRoom *r = &sys->rooms[room_id - 1u];
+    return r->active ? r : NULL;
+}
+
 const RtsInteriorRoom *rts_interior_find_room_at(const RtsInteriorSystem *sys, RtsFrameId frame_id, RtsVec3d local_p) {
     if (!sys) {
         return NULL;
@@ -225,6 +233,41 @@ const RtsConsoleStation *rts_interior_find_nearest_console(const RtsInteriorSyst
         }
     }
     return best;
+}
+
+void rts_interior_clear_frame_contents(RtsInteriorSystem *sys, RtsFrameId frame_id) {
+    if (!sys || frame_id == RTS_FRAME_INVALID) {
+        return;
+    }
+    size_t rw = 0;
+    for (size_t i = 0; i < sys->room_count; ++i) {
+        if (sys->rooms[i].active && sys->rooms[i].frame_id != frame_id) {
+            if (rw != i) sys->rooms[rw] = sys->rooms[i];
+            sys->rooms[rw].id = (uint32_t)(rw + 1u);
+            rw++;
+        }
+    }
+    sys->room_count = rw;
+
+    size_t pw = 0;
+    for (size_t i = 0; i < sys->portal_count; ++i) {
+        if (sys->portals[i].active && sys->portals[i].from_frame != frame_id) {
+            if (pw != i) sys->portals[pw] = sys->portals[i];
+            sys->portals[pw].id = (uint32_t)(pw + 1u);
+            pw++;
+        }
+    }
+    sys->portal_count = pw;
+
+    size_t cw = 0;
+    for (size_t i = 0; i < sys->console_count; ++i) {
+        if (sys->consoles[i].active && sys->consoles[i].frame_id != frame_id) {
+            if (cw != i) sys->consoles[cw] = sys->consoles[i];
+            sys->consoles[cw].id = (uint32_t)(cw + 1u);
+            cw++;
+        }
+    }
+    sys->console_count = cw;
 }
 
 void rts_interior_update_lod(RtsInteriorSystem *sys, RtsFrameId commander_frame, RtsVec3d commander_world_pos, double hydrate_radius_m) {

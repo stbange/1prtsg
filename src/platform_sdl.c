@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MIT */
+#include "rts/crew.h"
 #include "rts/fun_eval.h"
 #include "rts/gfx.h"
 #include "rts/input.h"
+#include "rts/interior_gen.h"
 #include "rts/lua_vm.h"
 #include "rts/platform.h"
 #include "rts/save_load.h"
@@ -37,11 +39,14 @@ typedef struct InteractiveApp {
     RtsCommanderController ctrl;
     RtsBoardingSystem boarding;
     RtsTacticalSim tactical;
+    RtsMegaInterior mega;
+    RtsCrewDeckSim crew;
     RtsRetroRenderer renderer;
     RtsLuaVm lua;
     RtsShowcaseScene scene;
     RtsConstructClass gallery_cls;
     RtsLiveViewMode view_mode;
+    int showcase_ship_idx;
     int last_web_touch_state;
     char quicksave_buf[32768];
     bool has_quicksave;
@@ -90,6 +95,90 @@ static bool init_sdl_gl(SDL_Window **out_win, SDL_GLContext *out_ctx, int w, int
     return true;
 }
 
+static uint32_t find_entity_by_blueprint(const RtsWorld *w, const char *bp_id, uint8_t faction_id) {
+    for (size_t i = 0; i < w->entity_count; ++i) {
+        const RtsEntity *e = &w->entities[i];
+        if (!e->active) continue;
+        if (faction_id != 0 && e->faction_id != faction_id) continue;
+        if (strcmp(e->blueprint_id, bp_id) == 0) return e->id;
+    }
+    return 0u;
+}
+
+static bool sandbox_enter_entity_mega(InteractiveApp *app, uint32_t entity_id, uint16_t deck) {
+    RtsEntity *ent = rts_world_get_entity(&app->world, entity_id);
+    if (!ent || ent->own_frame_id == RTS_FRAME_INVALID) return false;
+    const RtsConstructBlueprint *bp = rts_world_find_blueprint(&app->world, ent->blueprint_id);
+    if (!bp) return false;
+
+    if (!rts_mega_generate_for_blueprint(&app->mega, bp, ent->id)) return false;
+    if (deck >= app->mega.deck_count) deck = 0u;
+    if (!rts_mega_switch_deck(&app->mega, &app->world, deck)) return false;
+    size_t staffed = rts_crew_populate_deck(&app->crew, &app->mega, &app->world);
+    rts_renderer_set_active_interior(&app->renderer, &app->mega, &app->crew);
+
+    app->ctrl.mode = RTS_CMD_ON_FOOT;
+    app->ctrl.active_console_id = 0u;
+    app->world.commander.yaw_rad = 0.0;
+    app->world.commander.pitch_rad = -0.05;
+
+    char tag[80];
+    snprintf(tag, sizeof(tag), "MEGA-INTERIOR (%u ROOMS / %u DECKS)",
+             (unsigned)app->mega.total_rooms, (unsigned)app->mega.deck_count);
+    char toast[220];
+    snprintf(toast, sizeof(toast),
+             "%.36s DECK %u/%u | %zu LIVE STAFF | [WASD] WALK ROOMS | [/] LIFT | [N] NEXT SHIP | [F] RED ALERT",
+             ent->name, (unsigned)(deck + 1u), (unsigned)app->mega.deck_count, staffed);
+    rts_renderer_set_live_status(&app->renderer, tag, "", toast);
+    return true;
+}
+
+static void sandbox_switch_deck(InteractiveApp *app, int delta) {
+    if (app->mega.total_rooms == 0u || app->mega.deck_count <= 1u) {
+        rts_renderer_set_live_status(&app->renderer, "SINGLE-DECK INTERIOR", "",
+                                     "SINGLE-DECK CONSTRUCT - PRESS [N] TO TOUR MULTI-DECK CARRIERS & 420-ROOM DREADNOUGHTS!");
+        return;
+    }
+    int next = ((int)app->mega.active_deck + delta + (int)app->mega.deck_count) % (int)app->mega.deck_count;
+    if (rts_mega_switch_deck(&app->mega, &app->world, (uint16_t)next)) {
+        size_t staffed = rts_crew_populate_deck(&app->crew, &app->mega, &app->world);
+        rts_renderer_set_active_interior(&app->renderer, &app->mega, &app->crew);
+        app->ctrl.mode = RTS_CMD_ON_FOOT;
+        app->world.commander.yaw_rad = 0.0;
+        app->world.commander.pitch_rad = -0.04;
+        char tag[80];
+        snprintf(tag, sizeof(tag), "TURBOLIFT DECK %u / %u",
+                 (unsigned)(next + 1), (unsigned)app->mega.deck_count);
+        char toast[220];
+        snprintf(toast, sizeof(toast),
+                 "ARRIVED AT DECK %u/%u (%u TOTAL ROOMS) | %zu STAFFED CREW ACTIVE | [WASD] EXPLORE | [/] TURBOLIFT",
+                 (unsigned)(next + 1), (unsigned)app->mega.deck_count,
+                 (unsigned)app->mega.total_rooms, staffed);
+        rts_renderer_set_live_status(&app->renderer, tag, "", toast);
+    }
+}
+
+static void sandbox_cycle_megaship(InteractiveApp *app) {
+    static const char *const showcase_bps[5] = {
+        "bldg_command_citadel",
+        "air_dropship",
+        "ship_fleet_carrier",
+        "space_command_dreadnought",
+        "stn_orbital_shipyard"
+    };
+    app->showcase_ship_idx = (app->showcase_ship_idx + 1) % 5;
+    const char *bp_id = showcase_bps[app->showcase_ship_idx];
+    uint32_t eid = find_entity_by_blueprint(&app->world, bp_id, 1u);
+    if (eid == 0u && strcmp(bp_id, "ship_fleet_carrier") == 0) {
+        eid = rts_world_spawn_from_blueprint(&app->world, "ship_fleet_carrier", "Fleet Carrier Helios", 1u,
+                                             app->world.planet_frame_id,
+                                             rts_v3d(180.0, app->world.planet.radius_m, -140.0), true);
+    }
+    if (eid != 0u) {
+        sandbox_enter_entity_mega(app, eid, 0u);
+    }
+}
+
 static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
     const char *base = cfg->data_dir ? cfg->data_dir : SDL_GetBasePath();
     if (!base) base = ".";
@@ -112,6 +201,7 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
     rts_economy_init(&app->economy);
     rts_controller_init(&app->ctrl);
     rts_boarding_init(&app->boarding);
+    rts_crew_init(&app->crew);
     RtsFeelConfig feel = cfg->fun_baseline ? rts_feel_config_baseline() : rts_feel_config_solaris();
     rts_tactical_init(&app->tactical, &feel, seed, &app->audio);
 
@@ -129,12 +219,15 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
         fprintf(stderr, "[platform_sdl] scripts/main.lua failed: %s\n", app->lua.last_error);
         return false;
     }
-    /* Start Commander facing Citadel War Room Holo-Globe ready for Seamless Sandbox RTS */
-    app->world.commander.local_pos = rts_v3d(0.0, 1.75, 0.2);
-    app->world.commander.yaw_rad = 0.0;
-    app->world.commander.pitch_rad = -0.05;
-    rts_renderer_set_live_status(&app->renderer, "SEAMLESS SANDBOX RTS", "",
-                                 "WALK WAR ROOM [WASD] | [E] HOLO-GLOBE/BOARD | [G] ASTROGATOR 400KM ORBIT | [F5/F9] SAVE/LOAD");
+    /* Hydrate starting Citadel as a fully staffed 72-room / 6-deck explorable mega-interior */
+    app->showcase_ship_idx = 0;
+    if (!sandbox_enter_entity_mega(app, app->world.commander.occupied_entity_id, 0u)) {
+        app->world.commander.local_pos = rts_v3d(0.0, 1.75, 0.2);
+        app->world.commander.yaw_rad = 0.0;
+        app->world.commander.pitch_rad = -0.05;
+        rts_renderer_set_live_status(&app->renderer, "SEAMLESS SANDBOX RTS", "",
+                                     "WALK WAR ROOM [WASD] | [E] HOLO-GLOBE/BOARD | [G] ASTROGATOR 400KM ORBIT | [F5/F9] SAVE/LOAD");
+    }
     return true;
 }
 
@@ -147,29 +240,15 @@ static void shutdown_engine_stack(InteractiveApp *app) {
     SDL_Quit();
 }
 
-static uint32_t find_entity_by_blueprint(const RtsWorld *w, const char *bp_id, uint8_t faction_id) {
-    for (size_t i = 0; i < w->entity_count; ++i) {
-        const RtsEntity *e = &w->entities[i];
-        if (!e->active) continue;
-        if (faction_id != 0 && e->faction_id != faction_id) continue;
-        if (strcmp(e->blueprint_id, bp_id) == 0) return e->id;
-    }
-    return 0u;
-}
-
 static void sandbox_trigger_astrogator(InteractiveApp *app) {
     uint32_t dropship_id = find_entity_by_blueprint(&app->world, "air_dropship", 1u);
     uint32_t shipyard_id = find_entity_by_blueprint(&app->world, "stn_orbital_shipyard", 1u);
     RtsEntity *ds = rts_world_get_entity(&app->world, dropship_id);
     if (!ds) return;
 
-    /* Board Commander into Dropship Valkyrie-2 so the ascent/orbit is experienced in 1st person */
+    /* Board Commander into Dropship Valkyrie-2 with its full 3-room staffed interior */
     if (ds->own_frame_id != RTS_FRAME_INVALID) {
-        app->world.commander.frame_id = ds->own_frame_id;
-        app->world.commander.occupied_entity_id = ds->id;
-        app->world.commander.local_pos = rts_v3d(0.0, 1.7, -1.2);
-        app->world.commander.at_holo_globe = false;
-        app->ctrl.mode = RTS_CMD_ON_FOOT;
+        sandbox_enter_entity_mega(app, ds->id, 0u);
     }
 
     if (!ds->orbital_mode) {
@@ -200,6 +279,7 @@ static void sandbox_try_board_nearest(InteractiveApp *app) {
             app->world.commander.local_pos = rts_v3d(cur->pos.x + 18.0, cur->pos.y + 1.75, cur->pos.z + 18.0);
             app->world.commander.at_holo_globe = false;
             app->ctrl.mode = RTS_CMD_ON_FOOT;
+            rts_renderer_set_active_interior(&app->renderer, NULL, NULL);
             rts_renderer_set_live_status(&app->renderer, "PLANETARY SURFACE EVA", "",
                                          "EXITED TO HELIOS PRIME APRON - WALK TO DROPSHIP OR PRESS [B] TO BOARD NEAREST CONSTRUCT.");
         }
@@ -220,13 +300,7 @@ static void sandbox_try_board_nearest(InteractiveApp *app) {
     }
     RtsEntity *tgt = rts_world_get_entity(&app->world, best_id);
     if (tgt) {
-        app->world.commander.frame_id = tgt->own_frame_id;
-        app->world.commander.occupied_entity_id = tgt->id;
-        app->world.commander.local_pos = rts_v3d(0.0, 1.75, 0.2);
-        app->world.commander.at_holo_globe = false;
-        char msg[160];
-        snprintf(msg, sizeof(msg), "BOARDED %s INTERIOR DECK - PRESS [E] AT CONSOLES OR [G] FOR ORBIT!", tgt->name);
-        rts_renderer_set_live_status(&app->renderer, "INTERIOR DECK", "", msg);
+        sandbox_enter_entity_mega(app, tgt->id, 0u);
     }
 }
 
@@ -290,14 +364,16 @@ static void interactive_tick(void *arg) {
             }
         } else if (ev.type == SDL_EVENT_KEY_DOWN && !ev.key.repeat) {
             rts_input_notify_kbm_activity(&app->input);
+#ifndef __EMSCRIPTEN__
             if (ev.key.key == SDLK_ESCAPE) app->running = false;
+#endif
             if (ev.key.key == SDLK_L) {
                 app->view_mode = (app->view_mode == RTS_VIEW_TACTICAL) ? RTS_VIEW_SANDBOX_RTS : RTS_VIEW_TACTICAL;
             }
             if (ev.key.key == SDLK_M) {
                 app->view_mode = RTS_VIEW_SANDBOX_RTS;
                 rts_renderer_set_live_status(&app->renderer, "SEAMLESS SANDBOX RTS", "",
-                                             "SEAMLESS PLANETARY-TO-ORBITAL RTS ACTIVE: [E] CONSOLE | [B] BOARD/EXIT | [G] 400KM ORBIT | [F5/F9] SAVE");
+                                             "WALK ROOMS [WASD] | [/] TURBOLIFT | [N] NEXT MEGASHIP | [F] RED ALERT | [E] CONSOLE | [G] ORBIT");
             }
             if (ev.key.key == SDLK_C) {
                 if (app->view_mode == RTS_VIEW_GALLERY) {
@@ -307,7 +383,26 @@ static void interactive_tick(void *arg) {
                     app->gallery_cls = RTS_CLASS_BUILDING;
                 }
             }
-            if (ev.key.key == SDLK_E) app->input.intent.interact_pressed = true;
+            if (ev.key.key == SDLK_N) {
+                app->view_mode = RTS_VIEW_SANDBOX_RTS;
+                sandbox_cycle_megaship(app);
+            }
+            if (ev.key.key == SDLK_LEFTBRACKET && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
+                sandbox_switch_deck(app, -1);
+            }
+            if (ev.key.key == SDLK_RIGHTBRACKET && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
+                sandbox_switch_deck(app, +1);
+            }
+            if (ev.key.key == SDLK_E) {
+                const RtsConsoleStation *near_c = (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->ctrl.mode == RTS_CMD_ON_FOOT)
+                    ? rts_interior_find_nearest_console(&app->world.interiors, app->world.commander.frame_id, app->world.commander.local_pos)
+                    : NULL;
+                if (near_c && near_c->type == RTS_CONSOLE_TURBOLIFT) {
+                    sandbox_switch_deck(app, +1);
+                } else {
+                    app->input.intent.interact_pressed = true;
+                }
+            }
             if (ev.key.key == SDLK_TAB) app->input.intent.toggle_pad_pressed = true;
             if (ev.key.key == SDLK_G && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
                 sandbox_trigger_astrogator(app);
@@ -332,7 +427,18 @@ static void interactive_tick(void *arg) {
             if (ev.key.key == SDLK_Q) tin.action_pressed[RTS_ACT_EMP_PULSE] = true;
             if (ev.key.key == SDLK_LSHIFT || ev.key.key == SDLK_RSHIFT) tin.action_pressed[RTS_ACT_THRUSTER_DASH] = true;
             if (ev.key.key == SDLK_SPACE) tin.jump_pressed = true;
-            if (ev.key.key == SDLK_F) tin.action_pressed[RTS_ACT_FLEET_STRIKE] = true;
+            if (ev.key.key == SDLK_F) {
+                if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->mega.total_rooms > 0u) {
+                    bool next_alert = !app->crew.red_alert;
+                    rts_crew_set_red_alert(&app->crew, &app->mega, &app->world, next_alert);
+                    rts_renderer_set_live_status(&app->renderer,
+                                                 next_alert ? "RED ALERT - BOARDERS & DAMAGE CONTROL" : "ALL CLEAR - STANDARD OPS", "",
+                                                 next_alert ? "RED ALERT! ENGINEERS SPRINTING TO REPAIR DAMAGED CORES | SOLAR MARINES INTERCEPTING BREACHERS!"
+                                                            : "RED ALERT STOOD DOWN - CREW RETURNING TO STATIONS & PATROL.");
+                } else {
+                    tin.action_pressed[RTS_ACT_FLEET_STRIKE] = true;
+                }
+            }
             if (ev.key.key == SDLK_H) tin.action_pressed[RTS_ACT_FIELD_REPAIR] = true;
             if (ev.key.key == SDLK_R || ev.key.key == SDLK_RETURN) tin.retry_pressed = true;
 
@@ -409,6 +515,9 @@ static void interactive_tick(void *arg) {
         rts_tactical_sync_to_world(&app->tactical, &app->world);
     } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS) {
         rts_controller_step(&app->ctrl, &app->world, &app->input.intent, 1.0 / 60.0);
+        if (app->mega.total_rooms > 0u && app->world.commander.occupied_entity_id == app->mega.entity_id) {
+            rts_crew_step(&app->crew, &app->mega, &app->world, 1.0 / 60.0);
+        }
         if (app->ctrl.astrogator.phase != RTS_AUTO_IDLE) {
             RtsAutopilotPhase ph = rts_astrogator_step(&app->ctrl, &app->world, 1.0 / 60.0);
             if (ph == RTS_AUTO_CIRCULARIZED) {
@@ -590,13 +699,13 @@ int rts_platform_capture_roster_gallery(const RtsAppConfig *cfg) {
         SDL_GL_SwapWindow(app->window);
     }
 
-    /* Also capture live Seamless Sandbox RTS Mode inside the hydrated Citadel War Room with Holo-Globe active */
-    app->world.commander.local_pos = rts_v3d(0.0, 2.0, -0.4);
+    /* Also capture live Seamless Sandbox RTS Mode inside the hydrated 72-room Citadel War Room with Holo-Globe active */
+    app->world.commander.local_pos.y = 2.0;
     app->world.commander.yaw_rad = 0.04;
-    app->world.commander.pitch_rad = -0.04;
+    app->world.commander.pitch_rad = -0.05;
     app->world.commander.at_holo_globe = true;
     rts_renderer_set_live_status(&app->renderer, "SEAMLESS SANDBOX RTS [MODE M]", "",
-                                 "LIVE CITADEL WAR ROOM: [1] QUEUE TANK | [2] ATTACK | [3] 400KM ORBIT | [4] BOARDING | [F5/F9] SAVE");
+                                 "LIVE 72-ROOM CITADEL WAR ROOM: [1] QUEUE TANK | [2] ATTACK | [3] 400KM ORBIT | [4] BOARDING | [/] TURBOLIFT");
     rts_renderer_render_live_world(&app->renderer, &app->world, &app->input, 2.2f);
     SDL_GL_SwapWindow(app->window);
     rts_renderer_render_live_world(&app->renderer, &app->world, &app->input, 2.2f);
@@ -615,6 +724,137 @@ int rts_platform_capture_roster_gallery(const RtsAppConfig *cfg) {
            app->renderer.mesh_cache_count, st.draw_calls, st.screenshots_saved, st.gl_errors);
     if (st.gl_errors != 0u || app->renderer.mesh_cache_count < 76u) {
         fprintf(stderr, "[gallery] FAIL: gl_errors=%u, cached=%zu\n", st.gl_errors, app->renderer.mesh_cache_count);
+        rc = 1;
+    }
+
+    shutdown_engine_stack(app);
+    free(app);
+    return rc;
+}
+
+static bool save_live_interior_shot(InteractiveApp *app, const char *dir, const char *filename, float sim_t) {
+    rts_renderer_render_live_world(&app->renderer, &app->world, &app->input, sim_t);
+    SDL_GL_SwapWindow(app->window);
+    rts_renderer_render_live_world(&app->renderer, &app->world, &app->input, sim_t);
+    char out_path[512];
+    snprintf(out_path, sizeof(out_path), "%s/%s", dir, filename);
+    bool ok = rts_renderer_capture_png(&app->renderer, out_path);
+    SDL_GL_SwapWindow(app->window);
+    if (ok) {
+        printf("[mega_interiors] Saved %s\n", out_path);
+    } else {
+        fprintf(stderr, "[mega_interiors] Failed to write %s\n", out_path);
+    }
+    return ok;
+}
+
+static const RtsInteriorRoom *find_hydrated_room_kind(const RtsWorld *w, RtsFrameId fid, RtsRoomKind kind) {
+    for (size_t i = 0; i < w->interiors.room_count; ++i) {
+        const RtsInteriorRoom *rm = &w->interiors.rooms[i];
+        if (rm->active && rm->frame_id == fid && rm->kind == kind) return rm;
+    }
+    return NULL;
+}
+
+int rts_platform_capture_mega_interiors(const RtsAppConfig *cfg) {
+    InteractiveApp *app = (InteractiveApp *)calloc(1, sizeof(InteractiveApp));
+    if (!app) return 1;
+
+    if (!init_sdl_gl(&app->window, &app->gl_ctx, cfg->width, cfg->height, false)) {
+        free(app);
+        return 1;
+    }
+    if (!init_engine_stack(app, cfg)) {
+        shutdown_engine_stack(app);
+        free(app);
+        return 1;
+    }
+
+    int rc = 0;
+
+    /* Shot 1: 420-Room / 20-Deck Fleet Command Dreadnought Deck 1 Bridge & War Room (Fully Staffed) */
+    uint32_t dread_id = find_entity_by_blueprint(&app->world, "space_command_dreadnought", 1u);
+    if (dread_id != 0u && sandbox_enter_entity_mega(app, dread_id, 0u)) {
+        const RtsInteriorRoom *war = find_hydrated_room_kind(&app->world, app->world.commander.frame_id, RTS_ROOM_WAR_ROOM);
+        if (war) {
+            double cx = 0.5 * (war->local_bounds.min.x + war->local_bounds.max.x);
+            double cz = 0.5 * (war->local_bounds.min.z + war->local_bounds.max.z);
+            app->world.commander.local_pos = rts_v3d(cx, 2.05, cz + 3.8);
+            app->world.commander.yaw_rad = 0.0;
+            app->world.commander.pitch_rad = -0.07;
+        }
+        rts_renderer_set_live_status(&app->renderer, "DREADNOUGHT SOLARIS (420 ROOMS / 20 DECKS)", "",
+                                     "DECK 1 WAR ROOM & BRIDGE: 3D HOLO-GLOBE, STAFFED COMMAND OFFICERS & PANORAMIC 400KM LEO VIEWPORT");
+        if (!save_live_interior_shot(app, cfg->mega_interiors_dir, "interior_01_dreadnought_bridge_staffed.png", 1.4f)) rc = 1;
+
+        /* Shot 2: Walking Through Open Bulkhead Doorways Down Main Spine Corridor & Turbolift Hub with Patrolling Marines */
+        for (int t = 0; t < 75; ++t) {
+            rts_crew_step(&app->crew, &app->mega, &app->world, 1.0 / 60.0);
+        }
+        app->world.commander.local_pos = rts_v3d(-13.6, 1.88, 0.55);
+        app->world.commander.yaw_rad = 1.54;
+        app->world.commander.pitch_rad = -0.04;
+        rts_renderer_set_live_status(&app->renderer, "DREADNOUGHT SPINE CORRIDOR & TURBOLIFT", "",
+                                     "SEAMLESS MULTI-ROOM DOORWAYS: PATROLLING SOLAR MARINES, TURBOLIFT SHAFT & LIVE DECK BLUEPRINT MAP");
+        if (!save_live_interior_shot(app, cfg->mega_interiors_dir, "interior_02_dreadnought_corridor_marines.png", 2.6f)) rc = 1;
+    } else {
+        rc = 1;
+    }
+
+    /* Shot 3: 420-Room / 20-Deck Orbital Shipyard Reactor Core Deck under Red Alert with Engineers Weld-Repairing */
+    uint32_t ship_id = find_entity_by_blueprint(&app->world, "stn_orbital_shipyard", 1u);
+    if (ship_id != 0u && sandbox_enter_entity_mega(app, ship_id, 0u)) {
+        uint16_t rdeck = rts_mega_find_deck_with_kind(&app->mega, RTS_ROOM_REACTOR);
+        sandbox_enter_entity_mega(app, ship_id, rdeck);
+        rts_crew_set_red_alert(&app->crew, &app->mega, &app->world, true);
+        for (int t = 0; t < 105; ++t) {
+            rts_crew_step(&app->crew, &app->mega, &app->world, 1.0 / 60.0);
+        }
+        const RtsInteriorRoom *rrm = find_hydrated_room_kind(&app->world, app->world.commander.frame_id, RTS_ROOM_REACTOR);
+        if (rrm) {
+            double cx = 0.5 * (rrm->local_bounds.min.x + rrm->local_bounds.max.x);
+            double cz = 0.5 * (rrm->local_bounds.min.z + rrm->local_bounds.max.z);
+            app->world.commander.local_pos = rts_v3d(cx - 1.5, 2.0, cz + 4.1);
+            app->world.commander.yaw_rad = 0.30;
+            app->world.commander.pitch_rad = -0.05;
+        }
+        rts_renderer_set_live_status(&app->renderer, "ORBITAL SHIPYARD RED ALERT - REACTOR DECK", "",
+                                     "420-ROOM STATION DECK 14 REACTOR CORE: TOKAMAK CONTAINMENT & ENGINEERS EXECUTING LIVE DAMAGE CONTROL!");
+        if (!save_live_interior_shot(app, cfg->mega_interiors_dir, "interior_03_shipyard_reactor_deck.png", 3.8f)) rc = 1;
+    } else {
+        rc = 1;
+    }
+
+    /* Shot 4: 150-Room / 10-Deck Fleet Starfighter Carrier Hangar Deck with Parked Starfighters & Flight Crew */
+    uint32_t car_id = find_entity_by_blueprint(&app->world, "ship_fleet_carrier", 1u);
+    if (car_id == 0u) {
+        car_id = rts_world_spawn_from_blueprint(&app->world, "ship_fleet_carrier", "Fleet Carrier Helios", 1u,
+                                                app->world.planet_frame_id,
+                                                rts_v3d(180.0, app->world.planet.radius_m, -140.0), true);
+    }
+    if (car_id != 0u && sandbox_enter_entity_mega(app, car_id, 0u)) {
+        uint16_t hdeck = rts_mega_find_deck_with_kind(&app->mega, RTS_ROOM_HANGAR);
+        sandbox_enter_entity_mega(app, car_id, hdeck);
+        const RtsInteriorRoom *hrm = find_hydrated_room_kind(&app->world, app->world.commander.frame_id, RTS_ROOM_HANGAR);
+        if (hrm) {
+            double cx = 0.5 * (hrm->local_bounds.min.x + hrm->local_bounds.max.x);
+            double cz = 0.5 * (hrm->local_bounds.min.z + hrm->local_bounds.max.z);
+            app->world.commander.local_pos = rts_v3d(cx + 3.4, 2.22, cz + 3.9);
+            app->world.commander.yaw_rad = -0.58;
+            app->world.commander.pitch_rad = -0.14;
+        }
+        rts_renderer_set_live_status(&app->renderer, "FLEET CARRIER HELIOS (150 ROOMS / 10 DECKS)", "",
+                                     "DECK 2 STARFIGHTER HANGAR BAY: SCULPTED STARFIGHTERS, FLIGHT CREW, PILOTS & LAUNCH TERMINALS");
+        if (!save_live_interior_shot(app, cfg->mega_interiors_dir, "interior_04_carrier_hangar_deck.png", 5.0f)) rc = 1;
+    } else {
+        rc = 1;
+    }
+
+    RtsGfxStats st = app->renderer.gfx.get_stats(app->renderer.gfx.state);
+    printf("[mega_interiors] OpenGL draw calls: %u, screenshots: %u, gl_errors: %u\n",
+           st.draw_calls, st.screenshots_saved, st.gl_errors);
+    if (st.gl_errors != 0u) {
+        fprintf(stderr, "[mega_interiors] FAIL: OpenGL reported %u errors\n", st.gl_errors);
         rc = 1;
     }
 
