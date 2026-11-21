@@ -57,6 +57,8 @@ static void test_lua_vm_bindings_sandbox_and_coverage(void) {
         "engine.control.release_pilot()\n"
         "assert(engine.boarding.get_op(9999) == nil)\n"
         "assert(engine.boarding.get_meltdown(9999) == nil)\n"
+        "assert(engine.config.load('missing.cfg') == nil)\n"
+        "assert(not engine.save.restore('INVALID'))\n"
         "local ok, _ = pcall(require, 'missing_mod_xyz')\n"
         "assert(not ok)\n",
         "=binding_checks"), vm.last_error);

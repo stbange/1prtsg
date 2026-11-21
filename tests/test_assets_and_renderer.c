@@ -54,7 +54,9 @@ static void test_retro_renderer_all_scenes_on_null_backend(void) {
     rts_input_init(&input, 1280.0f, 720.0f, false);
 
     RtsRetroRenderer rr;
-    TEST_ASSERT_FALSE(rts_renderer_init(&rr, rts_gfx_null_create(), NULL, 1280, 720));
+    RtsGfxBackend bad_gfx = rts_gfx_null_create();
+    TEST_ASSERT_FALSE(rts_renderer_init(&rr, bad_gfx, NULL, 1280, 720));
+    bad_gfx.shutdown(bad_gfx.state);
     TEST_ASSERT_TRUE(rts_renderer_init(&rr, rts_gfx_null_create(), &vfs, 1280, 720));
 
     /* Exercise all showcase scenes + live-world floating-origin render + screenshot capture */

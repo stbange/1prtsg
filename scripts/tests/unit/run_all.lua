@@ -86,7 +86,17 @@ boarding.advance_meltdowns(1.0, 6)
 check(boarding.meltdown_status(cap.enemy_bc).detonated, "Meltdown should detonate after countdown expires")
 check(engine.world.get_entity(cap.enemy_bc) == nil, "Detonated Battlecruiser must be destroyed")
 
--- 7. Combat, shield & localized subsystem damage unit test
+-- 7. Phase 4 Session Management (External Config, VFS Hot-Reload Watcher, Save/Load Snapshots)
+local session = require("rules.session")
+local cfg = session.load_engine_config("engine.cfg")
+check(cfg ~= nil and cfg.window_width == 1280 and cfg.hardcore_ironman, "External engine.cfg must load cleanly")
+check(session.watch_script("main.lua"), "VFS hot-reload watch should register main.lua")
+check(session.poll_changes() == 0, "Unmodified watched scripts should report 0 changes")
+local snap = session.save_world_snapshot()
+check(snap ~= nil and string.sub(snap, 1, 11) == "RTS_SAVE_V1", "Snapshot must emit RTS_SAVE_V1 header")
+check(session.restore_world_snapshot(snap), "Restoring valid RTS_SAVE_V1 snapshot must succeed")
+
+-- 8. Combat, shield & localized subsystem damage unit test
 local combat = require("rules.combat")
 local enemy = combat.plasma_salvo(ACTIVE_MISSION.enemy_tank, 100, combat.SUBSYS_ENGINES)
 check(combat.is_shield_online(enemy), "Enemy shield should remain online after light hit")
@@ -94,7 +104,7 @@ enemy = combat.plasma_salvo(ACTIVE_MISSION.enemy_tank, 400, combat.SUBSYS_ENGINE
 check(not combat.is_shield_online(enemy), "Enemy shield should deplete after heavy salvo")
 check(enemy.engine_hp < 100, "Engine subsystem HP should degrade after shield collapse")
 
--- 8. Hardcore Ironman status & Escape Pod branches
+-- 9. Hardcore Ironman status & Escape Pod branches
 local ironman = require("rules.ironman")
 local st1 = ironman.evaluate_status()
 check(st1 == "ACTIVE_IN_COMMAND", "Commander should begin active in command")
@@ -107,4 +117,4 @@ combat.plasma_salvo(ACTIVE_MISSION.enemy_tank, 5000, combat.SUBSYS_REACTOR)
 local st3 = ironman.evaluate_status()
 check(st3 == "DEFEAT_IRONMAN", "Destroying commander's vessel without escape pod must trigger DEFEAT_IRONMAN")
 
-print("[Lua Unit Tests] ALL PASSED (Phases 1-3: 76 constructs, 12 roles, economy, sensors, astrogator, skirmish AI, boarding, meltdown)")
+print("[Lua Unit Tests] ALL PASSED (Phases 1-4: 76 constructs, 12 roles, economy, sensors, astrogator, skirmish AI, boarding, meltdown, session/save/reload)")

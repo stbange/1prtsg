@@ -128,4 +128,21 @@ expect(boarding.initiate_reactor_meltdown(cap.solar_corv, 3.0), "Scenario 15: Co
 boarding.advance_meltdowns(1.0, 4)
 expect(ironman.evaluate_status() == "DEFEAT_IRONMAN", "Scenario 15: Remaining aboard during meltdown must trigger DEFEAT_IRONMAN")
 
-print("[Automated Game Tests] ALL 15 END-TO-END SCENARIOS PASSED!")
+-- Scenario 16: External config/engine.cfg Loading via VFS
+local session = require("rules.session")
+local cfg = session.load_engine_config("engine.cfg")
+expect(cfg ~= nil and cfg.window_width == 1280 and cfg.planet_radius_m == 6371000, "Scenario 16: External config/engine.cfg load failed")
+
+-- Scenario 17: Live VFS Hot-Reload Watcher Registration & Clean Poll
+expect(session.watch_script("rules/boarding.lua"), "Scenario 17: Failed to watch external Lua script")
+expect(session.poll_changes() == 0, "Scenario 17: Unmodified watched script should report 0 changes")
+
+-- Scenario 18: Deterministic Save/Load World Snapshot Round-Trip from Lua
+local snap = session.save_world_snapshot()
+expect(snap ~= nil and string.sub(snap, 1, 11) == "RTS_SAVE_V1", "Scenario 18: Snapshot serialization failed")
+local tank_before = engine.world.get_entity(ACTIVE_MISSION.tank)
+expect(session.restore_world_snapshot(snap), "Scenario 18: Snapshot deserialization failed")
+local tank_after = engine.world.get_entity(ACTIVE_MISSION.tank)
+expect(tank_after ~= nil and math.abs(tank_after.x - tank_before.x) < 1e-6, "Scenario 18: Restored entity position diverged")
+
+print("[Automated Game Tests] ALL 18 END-TO-END SCENARIOS PASSED!")

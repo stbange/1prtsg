@@ -613,10 +613,11 @@ void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, cons
         draw_plasma_beam(rr, vp, (RtsVec3f){-1.0f, 3.4f, 15.0f}, (RtsVec3f){32.0f, 4.5f, 9.0f}, 0.40f, (RtsVec4f){0.20f, 0.88f, 1.0f, 1.0f}, time_s);
         draw_plasma_beam(rr, vp, (RtsVec3f){-16.0f, 28.0f, -22.0f}, (RtsVec3f){18.0f, 32.0f, -35.0f}, 0.35f, (RtsVec4f){0.35f, 1.0f, 0.45f, 1.0f}, time_s);
 
+        bool has_mod = rr->vfs && rr->vfs->mod_count > 0;
         render_hud_common(rr, world, input,
-                          "HELIOS PRIME SURFACE - CITADEL [1:1 SCALE]",
-                          "ALT:142M | SHIELD:94% | 3D CREW + 8-DIR SPRITES + VOXEL BUNKER",
-                          "GUNNER: PLASMA TANKS ENGAGING CRIMSON VANGUARD! DROPSHIP VALKYRIE-2 READY FOR BOARDING.",
+                          has_mod ? "HELIOS PRIME SURFACE - MOD ACTIVE: EMERALD VANGUARD" : "HELIOS PRIME SURFACE - CITADEL [1:1 SCALE]",
+                          has_mod ? "VFS MOD OVERLAY: MODS/EXAMPLE_MOD | CUSTOM TEXTURES + LUA UNITS" : "ALT:142M | SHIELD:94% | 3D CREW + 8-DIR SPRITES + VOXEL BUNKER",
+                          has_mod ? "MOD SDK: LIVE EXTERNAL HULL TEXTURE & EMERALD VANGUARD PLASMA TANK ACTIVE!" : "GUNNER: PLASMA TANKS ENGAGING CRIMSON VANGUARD! DROPSHIP VALKYRIE-2 READY FOR BOARDING.",
                           false);
         rr->gfx.end_frame(rr->gfx.state);
         return;

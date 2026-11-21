@@ -238,3 +238,42 @@ uint64_t rts_vfs_mtime(const RtsVfs *vfs, const char *category, const char *logi
 void rts_vfs_free(void *ptr) {
     free(ptr);
 }
+
+void rts_vfs_watch_init(RtsHotReloadWatch *watch) {
+    if (!watch) return;
+    memset(watch, 0, sizeof(*watch));
+}
+
+bool rts_vfs_watch_add(const RtsVfs *vfs, RtsHotReloadWatch *watch, const char *category, const char *logical_path) {
+    if (!vfs || !watch || !category || !logical_path || watch->count >= RTS_VFS_MAX_WATCHES) {
+        return false;
+    }
+    if (!rts_vfs_exists(vfs, category, logical_path)) {
+        return false;
+    }
+    RtsHotReloadEntry *e = &watch->entries[watch->count++];
+    memset(e, 0, sizeof(*e));
+    strncpy(e->category, category, sizeof(e->category) - 1);
+    strncpy(e->logical_path, logical_path, sizeof(e->logical_path) - 1);
+    e->last_mtime = rts_vfs_mtime(vfs, category, logical_path);
+    e->active = true;
+    return true;
+}
+
+size_t rts_vfs_check_hot_reload(const RtsVfs *vfs, RtsHotReloadWatch *watch, size_t *out_changed_indices, size_t max_out) {
+    if (!vfs || !watch) return 0u;
+    size_t changed = 0u;
+    for (size_t i = 0; i < watch->count; ++i) {
+        RtsHotReloadEntry *e = &watch->entries[i];
+        if (!e->active) continue;
+        uint64_t cur = rts_vfs_mtime(vfs, e->category, e->logical_path);
+        if (cur != 0u && cur != e->last_mtime) {
+            e->last_mtime = cur;
+            if (out_changed_indices && changed < max_out) {
+                out_changed_indices[changed] = i;
+            }
+            changed++;
+        }
+    }
+    return changed;
+}

@@ -4,10 +4,12 @@
 
 #include "rts/audio.h"
 #include "rts/boarding.h"
+#include "rts/config.h"
 #include "rts/controller.h"
 #include "rts/economy.h"
 #include "rts/gfx.h"
 #include "rts/input.h"
+#include "rts/save_load.h"
 #include "rts/vfs.h"
 #include "rts/voxel.h"
 #include "rts/world.h"
@@ -35,6 +37,7 @@ typedef struct RtsLuaVm {
     RtsEconomySystem *economy;
     RtsCommanderController *controller;
     RtsBoardingSystem *boarding;
+    RtsHotReloadWatch hot_watch;
     char last_error[512];
 
     bool coverage_enabled;

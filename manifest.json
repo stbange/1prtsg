@@ -45,6 +45,7 @@
     "scripts/rules/economy.lua",
     "scripts/rules/ironman.lua",
     "scripts/rules/sensors.lua",
+    "scripts/rules/session.lua",
     "scripts/tests/game/run_all.lua",
     "scripts/tests/unit/run_all.lua",
     "scripts/ui/diegetic_ui.lua",

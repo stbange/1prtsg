@@ -42,4 +42,22 @@ char *rts_vfs_read_text(const RtsVfs *vfs, const char *category, const char *log
 uint64_t rts_vfs_mtime(const RtsVfs *vfs, const char *category, const char *logical_path);
 void rts_vfs_free(void *ptr);
 
+#define RTS_VFS_MAX_WATCHES 32
+
+typedef struct RtsHotReloadEntry {
+    char category[32];
+    char logical_path[256];
+    uint64_t last_mtime;
+    bool active;
+} RtsHotReloadEntry;
+
+typedef struct RtsHotReloadWatch {
+    RtsHotReloadEntry entries[RTS_VFS_MAX_WATCHES];
+    size_t count;
+} RtsHotReloadWatch;
+
+void rts_vfs_watch_init(RtsHotReloadWatch *watch);
+bool rts_vfs_watch_add(const RtsVfs *vfs, RtsHotReloadWatch *watch, const char *category, const char *logical_path);
+size_t rts_vfs_check_hot_reload(const RtsVfs *vfs, RtsHotReloadWatch *watch, size_t *out_changed_indices, size_t max_out);
+
 #endif /* RTS_VFS_H */

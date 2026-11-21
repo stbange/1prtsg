@@ -1,0 +1,91 @@
+# SPDX-License-Identifier: MIT
+name: 1stPRTS CI (Cross-Platform Build, >=95% Coverage & Automated Tests)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  linux-coverage-and-gl:
+    name: Linux GCC + >=95% C & Lua Coverage + OpenGL Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build & Mesa Xvfb dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libgl1-mesa-dev libgles2-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libwayland-dev libxkbcommon-dev xvfb mesa-utils python3
+      - name: Configure & Build (linux-coverage)
+        run: |
+          cmake --preset linux-coverage
+          cmake --build --preset linux-coverage -j$(nproc)
+      - name: Run C Unit Tests, Lua Coverage (>=95%) & 18 Automated Game Tests
+        run: |
+          find build/linux-coverage -name '*.gcda' -delete
+          ctest --preset linux-coverage --output-on-failure
+      - name: Enforce >= 95% C11 Core Line Coverage Gate
+        run: |
+          python3 tools/check_coverage.py --build-dir build/linux-coverage --source-root . --min-line 95.0
+      - name: Live Offscreen OpenGL 3.3 Core Screenshot & Mod Smoke Test (0 GL Errors)
+        run: |
+          mkdir -p /tmp/ci_shots /tmp/ci_mod_shots
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" ./build/linux-coverage/1prtsg --data-dir . --capture-screenshots /tmp/ci_shots
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" ./build/linux-coverage/1prtsg --data-dir . --mod example_mod --capture-screenshots /tmp/ci_mod_shots
+
+  linux-sanitizers:
+    name: Linux ASan + UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libgl1-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libwayland-dev libxkbcommon-dev
+      - name: Configure, Build & Test (ASan/UBSan)
+        run: |
+          cmake -B build/asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DENABLE_SANITIZERS=ON -DBUILD_TESTING=ON
+          cmake --build build/asan -j$(nproc)
+          ctest --test-dir build/asan --output-on-failure
+
+  windows-msvc:
+    name: Windows MSVC Build & Tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure, Build & Test (MSVC)
+        run: |
+          cmake -B build/win -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build/win --config Release --parallel
+          ctest --test-dir build/win -C Release --output-on-failure
+
+  macos-clang:
+    name: macOS Clang Build & Tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure, Build & Test (macOS)
+        run: |
+          cmake -B build/macos -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+          cmake --build build/macos -j$(sysctl -n hw.ncpu)
+          ctest --test-dir build/macos --output-on-failure
+
+  web-emscripten:
+    name: Web & WebXR (Emscripten WASM, Zero Baked Assets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+      - name: Configure & Build Emscripten WASM
+        run: |
+          emcmake cmake -B build/web -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build/web -j$(nproc)
+      - name: Verify Loose External Manifest & Non-Baked Output
+        run: |
+          test -f build/web/1prtsg.wasm
+          test -f build/web/1prtsg.js
+          python3 tools/generate_manifest.py
+          test -f manifest.json

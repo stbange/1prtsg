@@ -644,6 +644,65 @@ static int l_board_step(lua_State *L) {
     return 1;
 }
 
+static int l_vfs_watch(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    const char *cat = luaL_checkstring(L, 1);
+    const char *path = luaL_checkstring(L, 2);
+    lua_pushboolean(L, rts_vfs_watch_add(vm->vfs, &vm->hot_watch, cat, path));
+    return 1;
+}
+
+static int l_vfs_poll_hot_reload(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    size_t changed = rts_vfs_check_hot_reload(vm->vfs, &vm->hot_watch, NULL, 0);
+    lua_pushinteger(L, (lua_Integer)changed);
+    return 1;
+}
+
+static int l_config_load(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    const char *path = luaL_optstring(L, 1, "engine.cfg");
+    RtsEngineConfig cfg;
+    bool ok = rts_config_load_vfs(vm->vfs, path, &cfg);
+    if (!ok) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_newtable(L);
+    lua_pushinteger(L, cfg.window_width); lua_setfield(L, -2, "window_width");
+    lua_pushinteger(L, cfg.window_height); lua_setfield(L, -2, "window_height");
+    lua_pushboolean(L, cfg.retro_nearest_textures); lua_setfield(L, -2, "retro_nearest_textures");
+    lua_pushboolean(L, cfg.hardcore_ironman); lua_setfield(L, -2, "hardcore_ironman");
+    lua_pushnumber(L, cfg.crew_sprite_lod_distance_m); lua_setfield(L, -2, "crew_sprite_lod_distance_m");
+    lua_pushnumber(L, cfg.planet_radius_m); lua_setfield(L, -2, "planet_radius_m");
+    return 1;
+}
+
+static int l_save_snapshot(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    char *buf = (char *)malloc(65536u);
+    if (!buf) {
+        lua_pushnil(L);
+        return 1;
+    }
+    size_t n = rts_save_serialize(vm->world, vm->economy, buf, 65536u);
+    if (n == 0u) {
+        free(buf);
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_pushlstring(L, buf, n);
+    free(buf);
+    return 1;
+}
+
+static int l_save_restore(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    const char *text = luaL_checkstring(L, 1);
+    lua_pushboolean(L, rts_save_deserialize(text, vm->world, vm->economy));
+    return 1;
+}
+
 static void register_subtable(lua_State *L, const char *name, const luaL_Reg *funcs) {
     lua_newtable(L);
     luaL_setfuncs(L, funcs, 0);
@@ -660,6 +719,7 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
     vm->input = input;
     vm->voxel = voxel;
     vm->renderer = renderer;
+    rts_vfs_watch_init(&vm->hot_watch);
 
     lua_State *L = luaL_newstate();
     if (!L) {
@@ -702,6 +762,8 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
         {"exists", l_vfs_exists},
         {"read_text", l_vfs_read_text},
         {"mount_mod", l_vfs_mount_mod},
+        {"watch", l_vfs_watch},
+        {"poll_hot_reload", l_vfs_poll_hot_reload},
         {NULL, NULL}
     };
     static const luaL_Reg planet_funcs[] = {
@@ -777,6 +839,15 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
         {"step", l_board_step},
         {NULL, NULL}
     };
+    static const luaL_Reg config_funcs[] = {
+        {"load", l_config_load},
+        {NULL, NULL}
+    };
+    static const luaL_Reg save_funcs[] = {
+        {"snapshot", l_save_snapshot},
+        {"restore", l_save_restore},
+        {NULL, NULL}
+    };
 
     register_subtable(L, "vfs", vfs_funcs);
     register_subtable(L, "planet", planet_funcs);
@@ -790,6 +861,8 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
     register_subtable(L, "sensors", sensor_funcs);
     register_subtable(L, "control", ctrl_funcs);
     register_subtable(L, "boarding", board_funcs);
+    register_subtable(L, "config", config_funcs);
+    register_subtable(L, "save", save_funcs);
     lua_setglobal(L, "engine");
     return true;
 }

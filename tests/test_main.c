@@ -15,6 +15,7 @@ void register_audio_tests(void);
 void register_economy_tests(void);
 void register_controller_tests(void);
 void register_boarding_tests(void);
+void register_config_and_save_tests(void);
 void register_assets_and_renderer_tests(void);
 void register_lua_vm_tests(void);
 
@@ -31,6 +32,7 @@ int main(void) {
     register_economy_tests();
     register_controller_tests();
     register_boarding_tests();
+    register_config_and_save_tests();
     register_assets_and_renderer_tests();
     register_lua_vm_tests();
     return UNITY_END();

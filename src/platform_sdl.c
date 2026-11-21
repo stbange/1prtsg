@@ -81,10 +81,14 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
         fprintf(stderr, "[platform_sdl] VFS init failed for '%s'\n", base);
         return false;
     }
+    rts_world_init(&app->world, rts_planet_earthlike(42u), 1337u);
+    RtsEngineConfig ecfg;
+    if (rts_config_load_vfs(&app->vfs, "engine.cfg", &ecfg)) {
+        rts_config_apply(&ecfg, &app->vfs, &app->world);
+    }
     if (cfg->mod_to_mount && cfg->mod_to_mount[0] != '\0') {
         rts_vfs_mount_mod(&app->vfs, cfg->mod_to_mount);
     }
-    rts_world_init(&app->world, rts_planet_earthlike(42u), 1337u);
     rts_input_init(&app->input, (float)cfg->width, (float)cfg->height, false);
     rts_voxel_init(&app->voxel, 1.0f);
     rts_audio_init(&app->audio, rts_audio_sdl3_create(), &app->vfs, 22050);
