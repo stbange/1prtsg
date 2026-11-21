@@ -28,3 +28,11 @@ The retro 3D renderer SHALL support rendering live world entities from the Comma
 - **GIVEN** external Carrier, Foundry, and Ocean assets loaded via VFS
 - **WHEN** the Naval Carrier Flight Deck and Vehicle Foundry Assembly Hall views render via OpenGL or Null backend
 - **THEN** frames complete with zero GL errors and display the 1:1 structures, crew, and Tactical Wrist-Pad overlay
+
+### Requirement: Red-Alert Boarding Interior and WebXR Stereoscopic Scenes
+The retro 3D renderer SHALL support red-alert strobe Dreadnought Bridge boarding interiors with meltdown countdown telemetry and side-by-side stereoscopic WebXR VR views.
+
+#### Scenario: Capturing Dreadnought red-alert and WebXR stereo screenshots
+- **GIVEN** external models, textures, and shaders loaded via VFS
+- **WHEN** `RTS_SCENE_DREADNOUGHT_BOARDING_REDALERT` and `RTS_SCENE_WEBXR_STEREO_HOLOGLOBE` render on OpenGL or Null backend
+- **THEN** both scenes complete with zero GL errors and valid visual composition

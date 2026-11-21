@@ -30,6 +30,14 @@ static void null_begin_frame(void *state, int width, int height, RtsVec4f clear_
     s->stats.frames_begun++;
 }
 
+static void null_set_viewport(void *state, int x, int y, int width, int height) {
+    (void)x;
+    (void)y;
+    NullGfxState *s = (NullGfxState *)state;
+    s->width = width;
+    s->height = height;
+}
+
 static void null_end_frame(void *state) {
     NullGfxState *s = (NullGfxState *)state;
     s->stats.frames_ended++;
@@ -98,6 +106,7 @@ RtsGfxBackend rts_gfx_null_create(void) {
     b.init = null_init;
     b.shutdown = null_shutdown;
     b.begin_frame = null_begin_frame;
+    b.set_viewport = null_set_viewport;
     b.end_frame = null_end_frame;
     b.create_shader = null_create_shader;
     b.create_mesh = null_create_mesh;

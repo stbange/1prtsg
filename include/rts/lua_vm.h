@@ -3,6 +3,7 @@
 #define RTS_LUA_VM_H
 
 #include "rts/audio.h"
+#include "rts/boarding.h"
 #include "rts/controller.h"
 #include "rts/economy.h"
 #include "rts/gfx.h"
@@ -33,6 +34,7 @@ typedef struct RtsLuaVm {
     RtsAudioEngine *audio;
     RtsEconomySystem *economy;
     RtsCommanderController *controller;
+    RtsBoardingSystem *boarding;
     char last_error[512];
 
     bool coverage_enabled;
@@ -42,6 +44,7 @@ typedef struct RtsLuaVm {
 
 bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *input, RtsVoxelChunk *voxel, RtsRetroRenderer *renderer);
 void rts_lua_attach_phase2(RtsLuaVm *vm, RtsAudioEngine *audio, RtsEconomySystem *economy, RtsCommanderController *controller);
+void rts_lua_attach_phase3(RtsLuaVm *vm, RtsBoardingSystem *boarding);
 void rts_lua_shutdown(RtsLuaVm *vm);
 void rts_lua_enable_coverage(RtsLuaVm *vm, bool enable);
 bool rts_lua_exec_vfs_script(RtsLuaVm *vm, const char *script_path);

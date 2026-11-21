@@ -69,7 +69,24 @@ check(not bad_re, "Invalid entity id must fail re-entry")
 local ok_re, peak_heat = astro.execute_shielded_reentry(ACTIVE_MISSION.dropship)
 check(ok_re and peak_heat > 10.0, "Dropship shielded re-entry should experience heating and land")
 
--- 6. Combat, shield & localized subsystem damage unit test
+-- 6. Phase 3 Multi-Deck Capital Ship Boarding & Critical Reactor Meltdown unit tests
+local cap_mission = require("missions.capital_assault")
+local cap = cap_mission.setup()
+local boarding = require("rules.boarding")
+
+local op_id = boarding.launch_boarding_assault(cap.enemy_dread, 1, 180, true, true)
+check(op_id > 0, "Boarding assault onto Crimson Dreadnought should launch")
+local op_res = boarding.resolve_boarding(op_id, 30)
+check(op_res ~= nil and op_res.status == boarding.STATUS_CAPTURED, "Solar Marines should capture Dreadnought Bridge intact")
+check(engine.world.get_entity(cap.enemy_dread).faction_id == 1, "Captured Dreadnought must flip to faction 1")
+
+check(boarding.initiate_reactor_meltdown(cap.enemy_bc, 5.0), "Reactor meltdown countdown should start")
+check(boarding.meltdown_status(cap.enemy_bc).active, "Meltdown should report active before detonation")
+boarding.advance_meltdowns(1.0, 6)
+check(boarding.meltdown_status(cap.enemy_bc).detonated, "Meltdown should detonate after countdown expires")
+check(engine.world.get_entity(cap.enemy_bc) == nil, "Detonated Battlecruiser must be destroyed")
+
+-- 7. Combat, shield & localized subsystem damage unit test
 local combat = require("rules.combat")
 local enemy = combat.plasma_salvo(ACTIVE_MISSION.enemy_tank, 100, combat.SUBSYS_ENGINES)
 check(combat.is_shield_online(enemy), "Enemy shield should remain online after light hit")
@@ -77,7 +94,7 @@ enemy = combat.plasma_salvo(ACTIVE_MISSION.enemy_tank, 400, combat.SUBSYS_ENGINE
 check(not combat.is_shield_online(enemy), "Enemy shield should deplete after heavy salvo")
 check(enemy.engine_hp < 100, "Engine subsystem HP should degrade after shield collapse")
 
--- 7. Hardcore Ironman status & Escape Pod branches
+-- 8. Hardcore Ironman status & Escape Pod branches
 local ironman = require("rules.ironman")
 local st1 = ironman.evaluate_status()
 check(st1 == "ACTIVE_IN_COMMAND", "Commander should begin active in command")
@@ -90,4 +107,4 @@ combat.plasma_salvo(ACTIVE_MISSION.enemy_tank, 5000, combat.SUBSYS_REACTOR)
 local st3 = ironman.evaluate_status()
 check(st3 == "DEFEAT_IRONMAN", "Destroying commander's vessel without escape pod must trigger DEFEAT_IRONMAN")
 
-print("[Lua Unit Tests] ALL PASSED (Phase 1 + Phase 2: 76 constructs, 12 roles, economy, sensors, astrogator, skirmish AI)")
+print("[Lua Unit Tests] ALL PASSED (Phases 1-3: 76 constructs, 12 roles, economy, sensors, astrogator, skirmish AI, boarding, meltdown)")

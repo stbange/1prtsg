@@ -102,4 +102,30 @@ expect(ironman.attempt_emergency_evac(), "Scenario 12: Emergency Escape Pod ejec
 combat.plasma_salvo(ACTIVE_MISSION.dreadnought, 50000, combat.SUBSYS_REACTOR)
 expect(ironman.evaluate_status() == "EVACUATED_SAFE", "Scenario 12: Commander inside Escape Pod must survive Dreadnought loss")
 
-print("[Automated Game Tests] ALL 12 END-TO-END SCENARIOS PASSED!")
+-- Scenario 13: Multi-Deck Capital Ship Boarding, Hull Decompression & Intact Bridge Capture
+local cap_m = require("missions.capital_assault")
+local cap = cap_m.setup()
+local boarding = require("rules.boarding")
+local bop = boarding.launch_boarding_assault(cap.enemy_dread, 1, 180, true, true)
+expect(bop > 0, "Scenario 13: Failed to launch boarding operation onto Crimson Dreadnought")
+local bres = boarding.resolve_boarding(bop, 30)
+expect(bres ~= nil and bres.status == boarding.STATUS_CAPTURED and bres.decompressed, "Scenario 13: Decompressed multi-deck boarding capture failed")
+expect(engine.world.get_entity(cap.enemy_dread).faction_id == 1, "Scenario 13: Captured Dreadnought did not transfer to Solar Directorate")
+
+-- Scenario 14: Critical Reactor Meltdown Countdown -> Commander Escape-Pod Sprint Survival
+expect(engine.world.commander_board(cap.enemy_dread), "Scenario 14: Commander failed to board captured Dreadnought")
+expect(boarding.initiate_reactor_meltdown(cap.enemy_dread, 8.0), "Scenario 14: Reactor meltdown failed to trigger")
+boarding.advance_meltdowns(1.0, 4)
+expect(boarding.meltdown_status(cap.enemy_dread).countdown_s > 0, "Scenario 14: Meltdown should still be counting down")
+expect(ironman.attempt_emergency_evac(), "Scenario 14: Commander failed Escape Pod sprint ejection")
+boarding.advance_meltdowns(1.0, 5)
+expect(boarding.meltdown_status(cap.enemy_dread).detonated, "Scenario 14: Dreadnought reactor failed to detonate")
+expect(ironman.evaluate_status() == "EVACUATED_SAFE", "Scenario 14: Commander must survive meltdown via Escape Pod")
+
+-- Scenario 15: Reactor Meltdown Ironman Defeat when Commander Remains Aboard Without Escape Pod
+expect(engine.world.commander_board(cap.solar_corv), "Scenario 15: Commander failed to board Corvette")
+expect(boarding.initiate_reactor_meltdown(cap.solar_corv, 3.0), "Scenario 15: Corvette meltdown failed to start")
+boarding.advance_meltdowns(1.0, 4)
+expect(ironman.evaluate_status() == "DEFEAT_IRONMAN", "Scenario 15: Remaining aboard during meltdown must trigger DEFEAT_IRONMAN")
+
+print("[Automated Game Tests] ALL 15 END-TO-END SCENARIOS PASSED!")

@@ -228,6 +228,7 @@ static int l_world_get_entity(lua_State *L) {
     }
     lua_newtable(L);
     lua_pushinteger(L, (lua_Integer)e->id); lua_setfield(L, -2, "id");
+    lua_pushinteger(L, (lua_Integer)e->faction_id); lua_setfield(L, -2, "faction_id");
     lua_pushstring(L, e->blueprint_id); lua_setfield(L, -2, "blueprint_id");
     lua_pushstring(L, e->name); lua_setfield(L, -2, "name");
     lua_pushnumber(L, e->pos.x); lua_setfield(L, -2, "x");
@@ -570,6 +571,79 @@ static int l_ctrl_astrogator_step(lua_State *L) {
     return 2;
 }
 
+static int l_board_start(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t target_id = (uint32_t)luaL_checkinteger(L, 1);
+    uint8_t fac = (uint8_t)luaL_checkinteger(L, 2);
+    uint32_t marines = (uint32_t)luaL_checkinteger(L, 3);
+    bool mag_boots = lua_toboolean(L, 4) != 0;
+    uint32_t op_id = vm->boarding ? rts_boarding_start(vm->boarding, vm->world, target_id, fac, marines, mag_boots) : 0u;
+    lua_pushinteger(L, (lua_Integer)op_id);
+    return 1;
+}
+
+static int l_board_set_decomp(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t op_id = (uint32_t)luaL_checkinteger(L, 1);
+    bool decomp = lua_toboolean(L, 2) != 0;
+    lua_pushboolean(L, vm->boarding && rts_boarding_set_decompression(vm->boarding, op_id, decomp));
+    return 1;
+}
+
+static int l_board_get_op(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t op_id = (uint32_t)luaL_checkinteger(L, 1);
+    const RtsBoardingOp *op = vm->boarding ? rts_boarding_get_op(vm->boarding, op_id) : NULL;
+    if (!op) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_newtable(L);
+    lua_pushinteger(L, (lua_Integer)op->status); lua_setfield(L, -2, "status");
+    lua_pushinteger(L, (lua_Integer)op->current_deck); lua_setfield(L, -2, "deck");
+    lua_pushinteger(L, (lua_Integer)op->attackers); lua_setfield(L, -2, "attackers");
+    lua_pushinteger(L, (lua_Integer)op->defenders); lua_setfield(L, -2, "defenders");
+    lua_pushboolean(L, op->decompressed); lua_setfield(L, -2, "decompressed");
+    return 1;
+}
+
+static int l_board_trigger_meltdown(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t eid = (uint32_t)luaL_checkinteger(L, 1);
+    double countdown_s = luaL_checknumber(L, 2);
+    lua_pushboolean(L, vm->boarding && rts_boarding_trigger_meltdown(vm->boarding, vm->world, eid, countdown_s));
+    return 1;
+}
+
+static int l_board_get_meltdown(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t eid = (uint32_t)luaL_checkinteger(L, 1);
+    const RtsMeltdownEvent *ev = vm->boarding ? rts_boarding_get_meltdown(vm->boarding, eid) : NULL;
+    if (!ev) {
+        lua_pushnil(L);
+        return 1;
+    }
+    lua_newtable(L);
+    lua_pushnumber(L, ev->countdown_s); lua_setfield(L, -2, "countdown_s");
+    lua_pushboolean(L, ev->active); lua_setfield(L, -2, "active");
+    lua_pushboolean(L, ev->detonated); lua_setfield(L, -2, "detonated");
+    return 1;
+}
+
+static int l_board_step(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    double dt = luaL_checknumber(L, 1);
+    int steps = (int)luaL_optinteger(L, 2, 1);
+    size_t done = 0;
+    if (vm->boarding) {
+        for (int i = 0; i < steps; ++i) {
+            done += rts_boarding_step(vm->boarding, vm->world, dt);
+        }
+    }
+    lua_pushinteger(L, (lua_Integer)done);
+    return 1;
+}
+
 static void register_subtable(lua_State *L, const char *name, const luaL_Reg *funcs) {
     lua_newtable(L);
     luaL_setfuncs(L, funcs, 0);
@@ -694,6 +768,15 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
         {"astrogator_step", l_ctrl_astrogator_step},
         {NULL, NULL}
     };
+    static const luaL_Reg board_funcs[] = {
+        {"start", l_board_start},
+        {"set_decompression", l_board_set_decomp},
+        {"get_op", l_board_get_op},
+        {"trigger_meltdown", l_board_trigger_meltdown},
+        {"get_meltdown", l_board_get_meltdown},
+        {"step", l_board_step},
+        {NULL, NULL}
+    };
 
     register_subtable(L, "vfs", vfs_funcs);
     register_subtable(L, "planet", planet_funcs);
@@ -706,6 +789,7 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
     register_subtable(L, "economy", eco_funcs);
     register_subtable(L, "sensors", sensor_funcs);
     register_subtable(L, "control", ctrl_funcs);
+    register_subtable(L, "boarding", board_funcs);
     lua_setglobal(L, "engine");
     return true;
 }
@@ -715,6 +799,11 @@ void rts_lua_attach_phase2(RtsLuaVm *vm, RtsAudioEngine *audio, RtsEconomySystem
     vm->audio = audio;
     vm->economy = economy;
     vm->controller = controller;
+}
+
+void rts_lua_attach_phase3(RtsLuaVm *vm, RtsBoardingSystem *boarding) {
+    if (!vm) return;
+    vm->boarding = boarding;
 }
 
 void rts_lua_shutdown(RtsLuaVm *vm) {

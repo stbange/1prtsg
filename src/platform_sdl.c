@@ -24,6 +24,7 @@ typedef struct InteractiveApp {
     RtsAudioEngine audio;
     RtsEconomySystem economy;
     RtsCommanderController ctrl;
+    RtsBoardingSystem boarding;
     RtsRetroRenderer renderer;
     RtsLuaVm lua;
     RtsShowcaseScene scene;
@@ -89,6 +90,7 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
     rts_audio_init(&app->audio, rts_audio_sdl3_create(), &app->vfs, 22050);
     rts_economy_init(&app->economy);
     rts_controller_init(&app->ctrl);
+    rts_boarding_init(&app->boarding);
 
     if (!rts_renderer_init(&app->renderer, rts_gfx_gl_create(), &app->vfs, cfg->width, cfg->height)) {
         fprintf(stderr, "[platform_sdl] Renderer init failed\n");
@@ -99,6 +101,7 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
         return false;
     }
     rts_lua_attach_phase2(&app->lua, &app->audio, &app->economy, &app->ctrl);
+    rts_lua_attach_phase3(&app->lua, &app->boarding);
     if (!rts_lua_exec_vfs_script(&app->lua, "main.lua")) {
         fprintf(stderr, "[platform_sdl] scripts/main.lua failed: %s\n", app->lua.last_error);
         return false;
@@ -140,6 +143,8 @@ static void interactive_tick(void *arg) {
             if (ev.key.key == SDLK_5) { app->live_camera_mode = false; app->scene = RTS_SCENE_MOBILE_TOUCH_HUD; }
             if (ev.key.key == SDLK_6) { app->live_camera_mode = false; app->scene = RTS_SCENE_NAVAL_CARRIER_DECK; }
             if (ev.key.key == SDLK_7) { app->live_camera_mode = false; app->scene = RTS_SCENE_FOUNDRY_INTERIOR; }
+            if (ev.key.key == SDLK_8) { app->live_camera_mode = false; app->scene = RTS_SCENE_DREADNOUGHT_BOARDING_REDALERT; }
+            if (ev.key.key == SDLK_9) { app->live_camera_mode = false; app->scene = RTS_SCENE_WEBXR_STEREO_HOLOGLOBE; }
         } else if (ev.type == SDL_EVENT_FINGER_DOWN) {
             rts_input_on_touch_down(&app->input, (int64_t)ev.tfinger.fingerID, ev.tfinger.x, ev.tfinger.y);
         } else if (ev.type == SDL_EVENT_FINGER_MOTION) {
@@ -150,15 +155,19 @@ static void interactive_tick(void *arg) {
     }
 
     RtsXrFrameState xr;
-    if (rts_webxr_get_latest_state(&xr) && xr.session_active) {
+    bool xr_on = rts_webxr_get_latest_state(&xr) && xr.session_active;
+    if (xr_on) {
         rts_input_update_xr(&app->input, &xr);
     }
 
     app->time_s += 1.0f / 60.0f;
     rts_controller_step(&app->ctrl, &app->world, &app->input.intent, 1.0 / 60.0);
     rts_economy_step(&app->economy, &app->world, 1.0 / 60.0);
+    rts_boarding_step(&app->boarding, &app->world, 1.0 / 60.0);
     rts_world_step(&app->world, 1.0 / 60.0);
-    if (app->live_camera_mode) {
+    if (xr_on) {
+        rts_renderer_render_webxr_stereo(&app->renderer, &app->world, &app->input, &xr, app->time_s);
+    } else if (app->live_camera_mode) {
         rts_renderer_render_live_world(&app->renderer, &app->world, &app->input, app->time_s);
     } else {
         rts_renderer_render_scene(&app->renderer, &app->world, &app->input, app->scene, app->time_s);
@@ -210,13 +219,15 @@ int rts_platform_capture_screenshots(const RtsAppConfig *cfg) {
         const char *filename;
         float sim_time;
     } shots[RTS_SCENE_COUNT] = {
-        {RTS_SCENE_WAR_ROOM_HOLOGLOBE, "01_war_room_hologlobe.png", 1.2f},
-        {RTS_SCENE_PLANETARY_SURFACE,  "02_planetary_surface_1to1.png", 2.4f},
-        {RTS_SCENE_DROPSHIP_INTERIOR,  "03_dropship_interior_ascent.png", 3.6f},
-        {RTS_SCENE_ORBITAL_SHIPYARD,   "04_orbital_shipyard_dreadnought.png", 4.8f},
-        {RTS_SCENE_MOBILE_TOUCH_HUD,   "05_mobile_web_touch_hud.png", 1.6f},
-        {RTS_SCENE_NAVAL_CARRIER_DECK, "06_naval_carrier_flight_deck.png", 2.8f},
-        {RTS_SCENE_FOUNDRY_INTERIOR,   "07_foundry_assembly_wristpad.png", 3.2f}
+        {RTS_SCENE_WAR_ROOM_HOLOGLOBE,           "01_war_room_hologlobe.png", 1.2f},
+        {RTS_SCENE_PLANETARY_SURFACE,            "02_planetary_surface_1to1.png", 2.4f},
+        {RTS_SCENE_DROPSHIP_INTERIOR,            "03_dropship_interior_ascent.png", 3.6f},
+        {RTS_SCENE_ORBITAL_SHIPYARD,             "04_orbital_shipyard_dreadnought.png", 4.8f},
+        {RTS_SCENE_MOBILE_TOUCH_HUD,             "05_mobile_web_touch_hud.png", 1.6f},
+        {RTS_SCENE_NAVAL_CARRIER_DECK,           "06_naval_carrier_flight_deck.png", 2.8f},
+        {RTS_SCENE_FOUNDRY_INTERIOR,             "07_foundry_assembly_wristpad.png", 3.2f},
+        {RTS_SCENE_DREADNOUGHT_BOARDING_REDALERT,"08_dreadnought_redalert_boarding.png", 4.1f},
+        {RTS_SCENE_WEBXR_STEREO_HOLOGLOBE,       "09_webxr_stereo_vr_view.png", 1.8f}
     };
 
     int rc = 0;

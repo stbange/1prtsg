@@ -72,12 +72,13 @@ static void test_retro_renderer_all_scenes_on_null_backend(void) {
         rts_world_spawn_from_blueprint(&world, cls_ids[c], cls_ids[c], (uint8_t)(c % 2 + 1), world.planet_frame_id, rts_v3d((double)c * 20.0, 0.0, -40.0), false);
     }
     rts_renderer_render_live_world(&rr, &world, &input, 2.0f);
+    rts_renderer_render_webxr_stereo(&rr, &world, &input, NULL, 2.5f);
     TEST_ASSERT_TRUE(rts_renderer_capture_png(&rr, "/tmp/rts_null_shot.png"));
     TEST_ASSERT_FALSE(rts_renderer_capture_png(&rr, NULL));
 
     RtsGfxStats st = rr.gfx.get_stats(rr.gfx.state);
-    TEST_ASSERT_EQUAL_UINT32((uint32_t)RTS_SCENE_COUNT + 1u, st.frames_begun);
-    TEST_ASSERT_EQUAL_UINT32((uint32_t)RTS_SCENE_COUNT + 1u, st.frames_ended);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)RTS_SCENE_COUNT + 2u, st.frames_begun);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)RTS_SCENE_COUNT + 2u, st.frames_ended);
     TEST_ASSERT_TRUE(st.draw_calls > 150u);
     TEST_ASSERT_EQUAL_UINT32(1u, st.screenshots_saved);
 

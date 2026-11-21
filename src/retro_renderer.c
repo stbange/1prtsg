@@ -786,6 +786,99 @@ void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, cons
         return;
     }
 
+    if (scene == RTS_SCENE_DREADNOUGHT_BOARDING_REDALERT) {
+        rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.09f, 0.015f, 0.02f, 1.0f});
+        RtsVec3f cam = {0.0f, 2.35f, 8.8f};
+        RtsMat4f vp = rts_mat4_mul(proj, rts_mat4_look_at(cam, (RtsVec3f){0.4f, 2.0f, -14.0f}, (RtsVec3f){0.0f, 1.0f, 0.0f}));
+        RtsVec3f red_light = {0.35f, 0.90f, 0.20f};
+
+        draw_starfield(rr, vp, cam, time_s);
+
+        /* Armored 680m Dreadnought 'Solaris' Bridge / CIC under Crimson Emergency Strobe Lighting */
+        draw_box(rr, vp, (RtsVec3f){0.0f, -0.3f, 0.0f},    (RtsVec3f){24.0f, 0.6f, 26.0f}, idq, rr->tex_deck_floor, (RtsVec4f){1.0f, 0.52f, 0.48f, 1.0f}, red_light, time_s);
+        draw_box(rr, vp, (RtsVec3f){0.0f, 8.2f, 0.0f},     (RtsVec3f){24.0f, 0.7f, 26.0f}, idq, rr->tex_hull_blue,  (RtsVec4f){0.75f, 0.25f, 0.25f, 1.0f}, red_light, time_s);
+        draw_box(rr, vp, (RtsVec3f){-11.5f, 4.0f, 0.0f},   (RtsVec3f){0.9f, 8.4f, 26.0f},  idq, rr->tex_hull_blue,  (RtsVec4f){0.85f, 0.32f, 0.30f, 1.0f}, red_light, time_s);
+        draw_box(rr, vp, (RtsVec3f){ 11.5f, 4.0f, 0.0f},   (RtsVec3f){0.9f, 8.4f, 26.0f},  idq, rr->tex_hull_blue,  (RtsVec4f){0.85f, 0.32f, 0.30f, 1.0f}, red_light, time_s);
+        /* Lower forward armored bulkhead below panoramic bridge viewport */
+        draw_box(rr, vp, (RtsVec3f){0.0f, 0.9f, -12.0f},   (RtsVec3f){24.0f, 1.8f, 0.9f},  idq, rr->tex_hull_blue,  (RtsVec4f){0.78f, 0.28f, 0.28f, 1.0f}, red_light, time_s);
+        /* Flashing Crimson Hazard Strobe Columns */
+        draw_box(rr, vp, (RtsVec3f){-6.6f, 4.2f, -11.6f},  (RtsVec3f){1.1f, 7.8f, 1.1f},   idq, rr->tex_hull_red,   (RtsVec4f){1.0f, 0.22f, 0.16f, 1.0f}, red_light, time_s);
+        draw_box(rr, vp, (RtsVec3f){ 6.6f, 4.2f, -11.6f},  (RtsVec3f){1.1f, 7.8f, 1.1f},   idq, rr->tex_hull_red,   (RtsVec4f){1.0f, 0.22f, 0.16f, 1.0f}, red_light, time_s);
+
+        /* Port-Side Illuminated Escape Pod Bay Door Frame (Green/Gold Evacuation Route) */
+        draw_box(rr, vp, (RtsVec3f){-10.8f, 2.2f, 1.5f},   (RtsVec3f){0.4f, 4.2f, 3.2f},   idq, rr->tex_crt_console,(RtsVec4f){0.30f, 1.0f, 0.55f, 1.0f}, red_light, time_s);
+
+        /* Exterior Crimson Battlecruiser Outside Bridge Window Firing Broadside */
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_dreadnought, rr->tex_hull_red, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), -0.32), (RtsVec3f){4.0f, 6.5f, -52.0f}, (RtsVec3f){4.8f, 4.8f, 4.8f}),
+                  (RtsVec4f){1.0f, 0.65f, 0.58f, 1.0f}, red_light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_plasma_beam(rr, vp, (RtsVec3f){18.0f, 8.0f, -44.0f}, (RtsVec3f){-16.0f, 5.5f, -24.0f}, 0.75f, (RtsVec4f){1.0f, 0.20f, 0.16f, 1.0f}, time_s);
+
+        /* Center Red-Alert Tactical Bridge Holo-Globe & Pedestal */
+        draw_box(rr, vp, (RtsVec3f){-0.8f, 0.48f, -1.8f},  (RtsVec3f){3.2f, 0.96f, 3.2f},  idq, rr->tex_hull_blue,  (RtsVec4f){0.55f, 0.25f, 0.32f, 1.0f}, red_light, time_s);
+        RtsQuatd spin = rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 0.6);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_planet_surface, vp,
+                  rts_mat4_from_quat_trs(spin, (RtsVec3f){-0.8f, 2.25f, -1.8f}, (RtsVec3f){1.0f, 1.0f, 1.0f}),
+                  (RtsVec4f){1.0f, 0.36f, 0.28f, 0.90f}, red_light, time_s, true, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(1,0,0), 0.4), (RtsVec3f){-0.8f, 2.25f, -1.8f}, (RtsVec3f){1.55f, 1.55f, 1.55f}),
+                  (RtsVec4f){1.0f, 0.25f, 0.20f, 0.95f}, red_light, time_s, false, true, false, false, RTS_DRAW_LINES);
+
+        /* Active Close-Quarters Bridge Boarding Firefight: Solar Marines vs Crimson Breachers! */
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.95), (RtsVec3f){-4.4f, 0.0f, 1.2f}, (RtsVec3f){1.15f, 1.15f, 1.15f}),
+                  (RtsVec4f){0.85f, 0.95f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.72), (RtsVec3f){-3.0f, 0.0f, -4.2f}, (RtsVec3f){1.15f, 1.15f, 1.15f}),
+                  (RtsVec4f){0.85f, 0.95f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_red, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), -1.15), (RtsVec3f){5.6f, 0.0f, -1.6f}, (RtsVec3f){1.20f, 1.20f, 1.20f}),
+                  (RtsVec4f){1.0f, 0.45f, 0.35f, 1.0f}, red_light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_red, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), -1.35), (RtsVec3f){7.2f, 0.0f, -4.6f}, (RtsVec3f){1.20f, 1.20f, 1.20f}),
+                  (RtsVec4f){1.0f, 0.45f, 0.35f, 1.0f}, red_light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+        /* Plasma Rifle Bolts Exchanged Inside the Bridge! */
+        draw_plasma_beam(rr, vp, (RtsVec3f){-3.8f, 1.45f, 1.0f},  (RtsVec3f){5.2f, 1.55f, -1.6f}, 0.14f, (RtsVec4f){0.22f, 0.94f, 1.0f, 1.0f}, time_s);
+        draw_plasma_beam(rr, vp, (RtsVec3f){ 5.2f, 1.50f, -1.8f}, (RtsVec3f){-2.6f, 1.65f, -3.9f}, 0.14f, (RtsVec4f){1.0f, 0.28f, 0.18f, 1.0f}, time_s);
+        draw_plasma_beam(rr, vp, (RtsVec3f){ 6.8f, 1.48f, -4.5f}, (RtsVec3f){-3.6f, 1.30f, 0.8f}, 0.12f, (RtsVec4f){1.0f, 0.60f, 0.18f, 1.0f}, time_s);
+
+        /* Red-Alert Reactor Meltdown & Boarding Telemetry Panel on Right */
+        float w = (float)rr->width, h = (float)rr->height;
+        RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+        hud_border_box(rr, ortho, w - 392.0f, 92.0f, 372.0f, 194.0f,
+                       (RtsVec4f){0.18f, 0.02f, 0.03f, 0.90f}, (RtsVec4f){1.0f, 0.25f, 0.18f, 0.98f});
+        hud_text(rr, ortho, w - 376.0f, 108.0f, 1.40f, (RtsVec4f){1.0f, 0.30f, 0.22f, 1.0f}, "!! REACTOR MELTDOWN: 00:08.4 !!");
+        hud_text(rr, ortho, w - 376.0f, 138.0f, 1.15f, (RtsVec4f){1.0f, 0.85f, 0.30f, 1.0f}, "BOARDING ALERT: DECK 3 BRIDGE/CIC");
+        hud_text(rr, ortho, w - 376.0f, 162.0f, 1.10f, (RtsVec4f){0.95f, 0.95f, 1.0f, 1.0f}, "SOLAR MARINES: 14 | BREACHERS: 6");
+        hud_text(rr, ortho, w - 376.0f, 186.0f, 1.10f, (RtsVec4f){0.35f, 0.95f, 1.0f, 1.0f}, "HULL DECOMPRESSED | MAG-BOOTS: ON");
+        hud_text(rr, ortho, w - 376.0f, 212.0f, 1.15f, (RtsVec4f){0.35f, 1.0f, 0.58f, 1.0f}, "ESCAPE POD BAY: 14M PORT BULKHEAD");
+        hud_quad(rr, ortho, w - 376.0f, 244.0f, 338.0f, 16.0f, (RtsVec4f){0.32f, 0.05f, 0.05f, 1.0f});
+        hud_quad(rr, ortho, w - 376.0f, 244.0f, 265.0f, 16.0f, (RtsVec4f){1.0f, 0.22f, 0.16f, 1.0f});
+
+        render_hud_common(rr, world, input,
+                          "DREADNOUGHT 'SOLARIS' - BRIDGE/CIC [RED ALERT]",
+                          "MULTI-DECK BOARDING ACTION | IRONMAN EVACUATION COUNTDOWN",
+                          "CHIEF ENGINEER: CORE CONTAINMENT FAILING! SPRINT TO PORT ESCAPE PODS IMMEDIATELY!",
+                          false);
+        rr->gfx.end_frame(rr->gfx.state);
+        return;
+    }
+
+    if (scene == RTS_SCENE_WEBXR_STEREO_HOLOGLOBE) {
+        RtsXrFrameState xr;
+        memset(&xr, 0, sizeof(xr));
+        xr.session_active = true;
+        xr.eye_count = 2;
+        xr.head_pos = rts_v3d(0.0, 2.30, 5.8);
+        xr.head_rot = rts_quat_identity();
+        xr.right_aim_ray.origin = rts_v3d(0.72, 1.55, 3.9);
+        xr.right_aim_ray.dir = rts_v3d_norm(rts_v3d(-0.18, 0.16, -0.97));
+        xr.right_trigger_down = true;
+        rts_renderer_render_webxr_stereo(rr, world, input, &xr, time_s);
+        return;
+    }
+
     /* RTS_SCENE_ORBITAL_SHIPYARD: Dramatic 3/4 orbital showcase of Drydock, Dreadnought, Battlecruiser & Planet Limb */
     rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.01f, 0.015f, 0.045f, 1.0f});
     RtsVec3f cam = {-76.0f, 38.0f, 102.0f};
@@ -837,6 +930,93 @@ void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, cons
     rr->gfx.end_frame(rr->gfx.state);
 }
 
+void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, const RtsXrFrameState *xr, float time_s) {
+    if (!rr || !rr->initialized) return;
+    int half_w = rr->width / 2;
+    int full_h = rr->height;
+    float eye_aspect = (float)(half_w > 0 ? half_w : 1) / (float)(full_h > 0 ? full_h : 1);
+    RtsMat4f eye_proj = rts_mat4_perspective((float)(68.0 * RTS_DEG2RAD), eye_aspect, 0.15f, 1200.0f);
+    RtsVec3f light = {0.55f, 0.80f, 0.35f};
+    RtsQuatd idq = rts_quat_identity();
+
+    rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.015f, 0.03f, 0.08f, 1.0f});
+
+    RtsVec3f base_head = (xr && xr->session_active) ? rts_v3d_to_f(xr->head_pos) : (RtsVec3f){0.0f, 2.30f, 5.8f};
+    RtsVec3f hand_pos = (xr && xr->session_active) ? rts_v3d_to_f(xr->right_aim_ray.origin) : (RtsVec3f){0.72f, 1.55f, 3.9f};
+    RtsVec3f hit_pt = {0.0f, 2.25f, 0.45f};
+    const float ipd_half = 0.24f; /* Visible stereo IPD baseline for clear dual-eye parallax */
+
+    for (int eye = 0; eye < 2; ++eye) {
+        if (rr->gfx.set_viewport) {
+            rr->gfx.set_viewport(rr->gfx.state, eye * half_w, 0, half_w, full_h);
+        }
+        float side = (eye == 0) ? -1.0f : 1.0f;
+        RtsVec3f cam = {base_head.x + side * ipd_half, base_head.y, base_head.z};
+        RtsVec3f target = {side * 0.04f, 1.85f, -0.8f};
+        RtsMat4f vp = rts_mat4_mul(eye_proj, rts_mat4_look_at(cam, target, (RtsVec3f){0.0f, 1.0f, 0.0f}));
+
+        draw_starfield(rr, vp, cam, time_s);
+        /* War Room Deck + Bulkheads + Holo-Globe Pedestal */
+        draw_box(rr, vp, (RtsVec3f){0.0f, -0.25f, 0.0f}, (RtsVec3f){20.0f, 0.5f, 20.0f}, idq, rr->tex_deck_floor, (RtsVec4f){0.85f, 0.90f, 1.0f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){0.0f, 7.2f, 0.0f},   (RtsVec3f){20.0f, 0.6f, 20.0f}, idq, rr->tex_hull_blue,  (RtsVec4f){0.42f, 0.52f, 0.72f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){-9.5f, 3.5f, 0.0f},  (RtsVec3f){0.8f, 7.2f, 20.0f},  idq, rr->tex_hull_blue,  (RtsVec4f){0.55f, 0.68f, 0.92f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){ 9.5f, 3.5f, 0.0f},  (RtsVec3f){0.8f, 7.2f, 20.0f},  idq, rr->tex_hull_blue,  (RtsVec4f){0.55f, 0.68f, 0.92f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){0.0f, 0.45f, -0.6f}, (RtsVec3f){3.4f, 0.9f, 3.4f},   idq, rr->tex_hull_blue,  (RtsVec4f){0.30f, 0.48f, 0.78f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){0.0f, 0.92f, -0.6f}, (RtsVec3f){3.7f, 0.12f, 3.7f},  idq, rr->tex_hull_blue,  (RtsVec4f){0.98f, 0.80f, 0.22f, 1.0f}, light, time_s);
+
+        /* Forced Full 3D Low-Poly Crew Models in WebXR (no flat billboards in VR!) */
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.75), (RtsVec3f){-2.9f, 0.0f, -1.6f}, (RtsVec3f){1.0f, 1.0f, 1.0f}),
+                  (RtsVec4f){0.95f, 0.96f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), -0.85), (RtsVec3f){2.9f, 0.0f, -1.4f}, (RtsVec3f){1.0f, 1.0f, 1.0f}),
+                  (RtsVec4f){1.0f, 0.90f, 0.50f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+        /* 3D Planetary & Orbital Holo-Globe */
+        RtsQuatd spin = rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 0.45 + 0.5);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_planet_surface, vp,
+                  rts_mat4_from_quat_trs(spin, (RtsVec3f){0.0f, 2.25f, -0.6f}, (RtsVec3f){1.15f, 1.15f, 1.15f}),
+                  (RtsVec4f){0.35f, 0.90f, 1.0f, 0.90f}, light, time_s, true, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(spin, (RtsVec3f){0.0f, 2.25f, -0.6f}, (RtsVec3f){1.24f, 1.24f, 1.24f}),
+                  (RtsVec4f){0.20f, 0.92f, 1.0f, 0.55f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(1,0,0), 0.38), (RtsVec3f){0.0f, 2.25f, -0.6f}, (RtsVec3f){1.65f, 1.65f, 1.65f}),
+                  (RtsVec4f){1.0f, 0.86f, 0.22f, 0.95f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(1,0,0), -0.52), (RtsVec3f){0.0f, 2.25f, -0.6f}, (RtsVec3f){1.95f, 1.95f, 1.95f}),
+                  (RtsVec4f){1.0f, 0.25f, 0.30f, 0.95f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+
+        /* 6-DOF VR Right Controller Grip + Glowing Cyan Laser Aim-Ray Intersecting Holo-Globe + Gold Hit Reticle */
+        draw_box(rr, vp, hand_pos, (RtsVec3f){0.18f, 0.14f, 0.42f}, rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.22), rr->tex_hull_blue, (RtsVec4f){0.88f, 0.95f, 1.0f, 1.0f}, light, time_s);
+        draw_plasma_beam(rr, vp, hand_pos, hit_pt, 0.045f, (RtsVec4f){0.25f, 1.0f, 0.80f, 1.0f}, time_s);
+        draw_box(rr, vp, hit_pt, (RtsVec3f){0.20f, 0.20f, 0.20f}, spin, rr->tex_hull_blue, (RtsVec4f){1.0f, 0.88f, 0.20f, 1.0f}, light, time_s);
+
+        /* 3D Diegetic Left-Hand Wrist-Pad Floating in VR Space */
+        draw_box(rr, vp, (RtsVec3f){-0.85f, 1.48f, 4.10f}, (RtsVec3f){0.58f, 0.38f, 0.04f},
+                 rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.45), rr->tex_crt_console, (RtsVec4f){0.35f, 1.0f, 0.80f, 1.0f}, light, time_s);
+    }
+
+    /* Restore full framebuffer viewport for crisp stereo divider & WebXR telemetry HUD */
+    if (rr->gfx.set_viewport) {
+        rr->gfx.set_viewport(rr->gfx.state, 0, 0, rr->width, rr->height);
+    }
+    float w = (float)rr->width, h = (float)rr->height;
+    RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+    hud_quad(rr, ortho, w * 0.5f - 2.0f, 66.0f, 4.0f, h - 120.0f, (RtsVec4f){0.15f, 0.92f, 1.0f, 0.95f});
+    hud_border_box(rr, ortho, 16.0f, 82.0f, 246.0f, 28.0f, (RtsVec4f){0.02f, 0.08f, 0.14f, 0.85f}, (RtsVec4f){0.25f, 0.95f, 0.78f, 0.95f});
+    hud_text(rr, ortho, 26.0f, 90.0f, 1.15f, (RtsVec4f){0.35f, 1.0f, 0.82f, 1.0f}, "LEFT EYE [WEBXR 6-DOF]");
+    hud_border_box(rr, ortho, w * 0.5f + 16.0f, 82.0f, 258.0f, 28.0f, (RtsVec4f){0.02f, 0.08f, 0.14f, 0.85f}, (RtsVec4f){0.25f, 0.95f, 0.78f, 0.95f});
+    hud_text(rr, ortho, w * 0.5f + 26.0f, 90.0f, 1.15f, (RtsVec4f){0.35f, 1.0f, 0.82f, 1.0f}, "RIGHT EYE [IPD 64MM]");
+
+    render_hud_common(rr, world, input,
+                      "WEBXR STEREOSCOPIC VR - WAR ROOM HOLO-GLOBE",
+                      "DUAL-EYE STEREO | 3D CREW LOD FORCED | LASER AIM-RAY HIT",
+                      "WEBXR SESSION ACTIVE: AIM-RAY LOCKED ON HELIOS PRIME 400KM ORBITAL FLEET!",
+                      false);
+    rr->gfx.end_frame(rr->gfx.state);
+}
+
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s) {
     if (!rr || !rr->initialized || !world) return;
     float aspect = (float)rr->width / (float)(rr->height > 0 ? rr->height : 1);
@@ -873,7 +1053,7 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
 
     render_hud_common(rr, world, input,
                       "1STPRTS LIVE FIRST-PERSON COMMANDER VIEW",
-                      "WASD: WALK/PILOT | TAB: WRIST-PAD | E: INTERACT | 1-7: SHOWCASE SCENES",
+                      "WASD: WALK/PILOT | TAB: WRIST-PAD | E: INTERACT | 1-9: SHOWCASE SCENES",
                       "LIVE SIMULATION ACTIVE - FLOATING-ORIGIN 64-BIT CAMERA RELATIVE TO COMMANDER.",
                       false);
     rr->gfx.end_frame(rr->gfx.state);

@@ -179,6 +179,7 @@ add_library(rts_core STATIC
     src/audio.c
     src/economy.c
     src/controller.c
+    src/boarding.c
     src/obj_loader.c
     src/image_io.c
     src/gfx_null.c
@@ -266,6 +267,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         tests/test_audio.c
         tests/test_economy.c
         tests/test_controller.c
+        tests/test_boarding.c
         tests/test_assets_and_renderer.c
         tests/test_lua_vm.c
     )

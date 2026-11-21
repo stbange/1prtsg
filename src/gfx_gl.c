@@ -280,6 +280,11 @@ static bool gl_capture_png(void *state, const char *out_path, int width, int hei
     return ok;
 }
 
+static void gl_set_viewport(void *state, int x, int y, int width, int height) {
+    (void)state;
+    glViewport(x, y, width, height);
+}
+
 static RtsGfxStats gl_get_stats(void *state) {
     GlState *s = (GlState *)state;
     return s->stats;
@@ -293,6 +298,7 @@ RtsGfxBackend rts_gfx_gl_create(void) {
     b.init = gl_init;
     b.shutdown = gl_shutdown;
     b.begin_frame = gl_begin_frame;
+    b.set_viewport = gl_set_viewport;
     b.end_frame = gl_end_frame;
     b.create_shader = gl_create_shader;
     b.create_mesh = gl_create_mesh;

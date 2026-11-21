@@ -35,6 +35,8 @@ static int run_headless(const RtsAppConfig *cfg) {
     rts_economy_init(&economy);
     RtsCommanderController ctrl;
     rts_controller_init(&ctrl);
+    RtsBoardingSystem boarding;
+    rts_boarding_init(&boarding);
     RtsRetroRenderer renderer;
     rts_renderer_init(&renderer, rts_gfx_null_create(), &vfs, cfg->width, cfg->height);
 
@@ -46,6 +48,7 @@ static int run_headless(const RtsAppConfig *cfg) {
         return 1;
     }
     rts_lua_attach_phase2(&lua, &audio, &economy, &ctrl);
+    rts_lua_attach_phase3(&lua, &boarding);
     if (cfg->lua_coverage) {
         rts_lua_enable_coverage(&lua, true);
     }

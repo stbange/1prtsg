@@ -71,6 +71,7 @@ typedef struct RtsGfxBackend {
     bool (*init)(void *state, int width, int height);
     void (*shutdown)(void *state);
     void (*begin_frame)(void *state, int width, int height, RtsVec4f clear_rgba);
+    void (*set_viewport)(void *state, int x, int y, int width, int height);
     void (*end_frame)(void *state);
     RtsGfxHandle (*create_shader)(void *state, const char *vert_body, const char *frag_body);
     RtsGfxHandle (*create_mesh)(void *state, const RtsVertex *verts, size_t vert_count, bool dynamic);
@@ -100,7 +101,9 @@ typedef enum RtsShowcaseScene {
     RTS_SCENE_MOBILE_TOUCH_HUD = 4,
     RTS_SCENE_NAVAL_CARRIER_DECK = 5,
     RTS_SCENE_FOUNDRY_INTERIOR = 6,
-    RTS_SCENE_COUNT = 7
+    RTS_SCENE_DREADNOUGHT_BOARDING_REDALERT = 7,
+    RTS_SCENE_WEBXR_STEREO_HOLOGLOBE = 8,
+    RTS_SCENE_COUNT = 9
 } RtsShowcaseScene;
 
 typedef struct RtsRetroRenderer {
@@ -145,6 +148,7 @@ bool rts_renderer_init(RtsRetroRenderer *rr, RtsGfxBackend gfx, const RtsVfs *vf
 void rts_renderer_shutdown(RtsRetroRenderer *rr);
 void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsShowcaseScene scene, float time_s);
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s);
+void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, const RtsXrFrameState *xr, float time_s);
 bool rts_renderer_capture_png(RtsRetroRenderer *rr, const char *out_path);
 
 #endif /* RTS_GFX_H */
