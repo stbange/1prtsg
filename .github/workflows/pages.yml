@@ -1,0 +1,72 @@
+# SPDX-License-Identifier: MIT
+name: Deploy 1stPRTS Web/WebXR to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-stage-web:
+    name: Build Emscripten WASM & Stage Zero-Baked-Assets Site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: latest
+
+      - name: Configure & Build Emscripten WASM
+        run: |
+          emcmake cmake -B build/web -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build/web -j$(nproc)
+
+      - name: Stage GitHub Pages Site (Zero Baked Assets)
+        run: |
+          python3 tools/generate_manifest.py
+          rm -rf site
+          mkdir -p site
+          touch site/.nojekyll
+          cp web/index.html web/xr_bridge.js site/
+          cp build/web/1prtsg.js build/web/1prtsg.wasm site/
+          cp manifest.json site/
+          cp -r assets scripts config mods site/
+          echo "Staged GitHub Pages files:"
+          ls -lh site/
+          test -f site/index.html
+          test -f site/xr_bridge.js
+          test -f site/1prtsg.js
+          test -f site/1prtsg.wasm
+          test -f site/manifest.json
+          test -f site/assets/models/space_command_dreadnought.obj
+          test -f site/scripts/interiors/catalog.lua
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build-and-stage-web
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

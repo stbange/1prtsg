@@ -1,5 +1,7 @@
 # 1stPRTS (`1prtsg`)
 
+> **Play Live in Browser (WebGL 2 · Mobile Auto-Touch · WebXR VR):** **[https://stbange.github.io/1prtsg/](https://stbange.github.io/1prtsg/)**
+>
 > **Command a planetary-to-orbital empire from the boots up — with one life on the line.**  
 > An exclusively first-person Real-Time Strategy (RTS) game built in **C11 + SDL3 + OpenGL** with an external **Lua 5.4** gameplay layer, styled with a signature **Solaris Retro-Futurism** aesthetic (sculpted swept-hull silhouettes, glacier-titanium & cerulean-gold vs. obsidian & molten-coral palettes, sweeping twilight-ring & cosmic nebula skies, Fresnel rim-lit shading, and analytic hexagonal shields) on **true-scale spherical planets (`R = 6,371 km`) with real Keplerian orbital mechanics**, where all **76 enterable constructs** (buildings, ground vehicles, naval ships, aircraft, spacecraft, and space stations) are realistically huge (1:1 human scale), manned by **12 crew roles**, and fully explorable.
 

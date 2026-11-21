@@ -254,6 +254,7 @@ if(EMSCRIPTEN)
         "-sFULL_ES3=1"
         "-sALLOW_MEMORY_GROWTH=1"
         "-sFORCE_FILESYSTEM=1"
+        "-sNO_EXIT_RUNTIME=1"
         "-sEXPORTED_FUNCTIONS=['_main','_rts_web_notify_touch_device','_rts_web_is_touch_device','_rts_webxr_on_session_state','_rts_webxr_on_frame']"
         "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','callMain']"
     )

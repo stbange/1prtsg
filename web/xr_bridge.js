@@ -1,15 +1,24 @@
 // SPDX-License-Identifier: MIT
-// Thin WebXR 6-DOF bridge connecting browser navigator.xr sessions to C engine hooks.
+// Thin WebXR 6-DOF & Mobile Touch bridge connecting browser APIs to C engine hooks.
 
-window.initRtsWebXR = function (Module) {
+window.initRtsWebXR = function (Module, initialTouch) {
   const btnVr = document.getElementById('btn-vr');
   const btnTouch = document.getElementById('btn-touch');
-  let touchForced = false;
+  let touchForced = Boolean(initialTouch);
   let xrSession = null;
 
+  const updateTouchLabel = () => {
+    if (btnTouch) {
+      btnTouch.textContent = touchForced ? 'Touch HUD: ON' : 'Touch HUD';
+    }
+  };
+  updateTouchLabel();
+
   if (btnTouch) {
-    btnTouch.addEventListener('click', () => {
+    btnTouch.addEventListener('click', (e) => {
+      e.currentTarget.blur();
       touchForced = !touchForced;
+      updateTouchLabel();
       if (Module._rts_web_notify_touch_device) {
         Module._rts_web_notify_touch_device(touchForced ? 1 : 0);
       }
@@ -21,7 +30,8 @@ window.initRtsWebXR = function (Module) {
   navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
     if (!supported) return;
     btnVr.disabled = false;
-    btnVr.addEventListener('click', async () => {
+    btnVr.addEventListener('click', async (e) => {
+      e.currentTarget.blur();
       if (xrSession) {
         await xrSession.end();
         return;
@@ -42,5 +52,5 @@ window.initRtsWebXR = function (Module) {
         }
       });
     });
-  });
+  }).catch(() => {});
 };

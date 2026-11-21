@@ -21,7 +21,8 @@
 typedef enum RtsLiveViewMode {
     RTS_VIEW_SHOWCASE = 0,
     RTS_VIEW_TACTICAL = 1,
-    RTS_VIEW_SANDBOX_RTS = 2
+    RTS_VIEW_SANDBOX_RTS = 2,
+    RTS_VIEW_GALLERY = 3
 } RtsLiveViewMode;
 
 typedef struct InteractiveApp {
@@ -39,8 +40,9 @@ typedef struct InteractiveApp {
     RtsRetroRenderer renderer;
     RtsLuaVm lua;
     RtsShowcaseScene scene;
+    RtsConstructClass gallery_cls;
     RtsLiveViewMode view_mode;
-    bool web_touch_latched;
+    int last_web_touch_state;
     char quicksave_buf[32768];
     bool has_quicksave;
     float time_s;
@@ -262,9 +264,11 @@ static void interactive_tick(void *arg) {
     InteractiveApp *app = (InteractiveApp *)arg;
     rts_input_begin_frame(&app->input);
 
-    if (!app->web_touch_latched && rts_web_is_touch_device()) {
-        rts_input_set_mode_override(&app->input, true, RTS_INPUT_MOBILE_TOUCH);
-        app->web_touch_latched = true;
+    int web_touch = rts_web_is_touch_device();
+    if (web_touch != app->last_web_touch_state) {
+        rts_input_set_mode_override(&app->input, web_touch != 0,
+                                    web_touch ? RTS_INPUT_MOBILE_TOUCH : RTS_INPUT_DESKTOP_KBM);
+        app->last_web_touch_state = web_touch;
     }
 
     RtsTacticalInput tin;
@@ -276,6 +280,14 @@ static void interactive_tick(void *arg) {
     while (SDL_PollEvent(&ev)) {
         if (ev.type == SDL_EVENT_QUIT) {
             app->running = false;
+        } else if (ev.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+            int nw = ev.window.data1;
+            int nh = ev.window.data2;
+            if (nw > 64 && nh > 64) {
+                app->renderer.width = nw;
+                app->renderer.height = nh;
+                rts_input_resize(&app->input, (float)nw, (float)nh);
+            }
         } else if (ev.type == SDL_EVENT_KEY_DOWN && !ev.key.repeat) {
             rts_input_notify_kbm_activity(&app->input);
             if (ev.key.key == SDLK_ESCAPE) app->running = false;
@@ -286,6 +298,14 @@ static void interactive_tick(void *arg) {
                 app->view_mode = RTS_VIEW_SANDBOX_RTS;
                 rts_renderer_set_live_status(&app->renderer, "SEAMLESS SANDBOX RTS", "",
                                              "SEAMLESS PLANETARY-TO-ORBITAL RTS ACTIVE: [E] CONSOLE | [B] BOARD/EXIT | [G] 400KM ORBIT | [F5/F9] SAVE");
+            }
+            if (ev.key.key == SDLK_C) {
+                if (app->view_mode == RTS_VIEW_GALLERY) {
+                    app->gallery_cls = (RtsConstructClass)(((int)app->gallery_cls + 1) % 6);
+                } else {
+                    app->view_mode = RTS_VIEW_GALLERY;
+                    app->gallery_cls = RTS_CLASS_BUILDING;
+                }
             }
             if (ev.key.key == SDLK_E) app->input.intent.interact_pressed = true;
             if (ev.key.key == SDLK_TAB) app->input.intent.toggle_pad_pressed = true;
@@ -358,6 +378,25 @@ static void interactive_tick(void *arg) {
         if (keys[SDL_SCANCODE_RIGHT]) { tin.aim_yaw += 0.04f; app->input.intent.look_dx += 0.04f; }
     }
 
+    /* Forward mobile touch virtual controls seamlessly into live tactical defense combat */
+    if (app->input.mode == RTS_INPUT_MOBILE_TOUCH) {
+        if (app->input.stick_active) {
+            tin.move_x = app->input.intent.move_x;
+            tin.move_z = app->input.intent.move_y;
+        }
+        tin.aim_yaw += app->input.intent.look_dx * 0.05f;
+        tin.aim_pitch = rts_clampf(tin.aim_pitch + app->input.intent.look_dy * 0.05f, -1.1f, 1.1f);
+        if (app->input.intent.interact_pressed || app->input.intent.designate_held) {
+            tin.action_pressed[RTS_ACT_PLASMA_LANCE] = true;
+        }
+        if (app->input.intent.toggle_pad_pressed) {
+            tin.action_pressed[RTS_ACT_EMP_PULSE] = true;
+        }
+        if (app->input.intent.mag_boot_pressed) {
+            tin.action_pressed[RTS_ACT_THRUSTER_DASH] = true;
+        }
+    }
+
     RtsXrFrameState xr;
     bool xr_on = rts_webxr_get_latest_state(&xr) && xr.session_active;
     if (xr_on) {
@@ -368,7 +407,7 @@ static void interactive_tick(void *arg) {
     if (app->view_mode == RTS_VIEW_TACTICAL) {
         rts_tactical_step(&app->tactical, &tin, 1.0 / 60.0);
         rts_tactical_sync_to_world(&app->tactical, &app->world);
-    } else {
+    } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS) {
         rts_controller_step(&app->ctrl, &app->world, &app->input.intent, 1.0 / 60.0);
         if (app->ctrl.astrogator.phase != RTS_AUTO_IDLE) {
             RtsAutopilotPhase ph = rts_astrogator_step(&app->ctrl, &app->world, 1.0 / 60.0);
@@ -391,6 +430,8 @@ static void interactive_tick(void *arg) {
         rts_renderer_render_tactical(&app->renderer, &app->tactical, &app->world, &app->input, app->time_s);
     } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS) {
         rts_renderer_render_live_world(&app->renderer, &app->world, &app->input, app->time_s);
+    } else if (app->view_mode == RTS_VIEW_GALLERY) {
+        rts_renderer_render_roster_class(&app->renderer, &app->world, &app->input, app->gallery_cls, app->time_s);
     } else {
         rts_renderer_render_scene(&app->renderer, &app->world, &app->input, app->scene, app->time_s);
     }
@@ -402,6 +443,7 @@ int rts_platform_run_interactive(const RtsAppConfig *cfg) {
     if (!app) return 1;
     app->scene = RTS_SCENE_WAR_ROOM_HOLOGLOBE;
     app->view_mode = RTS_VIEW_TACTICAL;
+    app->last_web_touch_state = -1;
     app->running = true;
 
     if (!init_sdl_gl(&app->window, &app->gl_ctx, cfg->width, cfg->height, false)) {
@@ -415,7 +457,7 @@ int rts_platform_run_interactive(const RtsAppConfig *cfg) {
     }
 
 #ifdef __EMSCRIPTEN__
-    emscripten_set_main_loop_arg(interactive_tick, app, 0, 1);
+    emscripten_set_main_loop_arg(interactive_tick, app, 0, 0);
     return 0;
 #else
     while (app->running) {

@@ -3,33 +3,184 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <title>1stPRTS (1prtsg) — First-Person Retro Space-Opera RTS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>1stPRTS (1prtsg) — First-Person Solaris Retro-Futurism RTS</title>
   <style>
-    html, body { margin: 0; padding: 0; background: #040814; color: #e2f1ff; font-family: monospace; overflow: hidden; height: 100%; }
-    #canvas { width: 100vw; height: 100vh; display: block; touch-action: none; }
-    #toolbar { position: fixed; top: 8px; right: 12px; z-index: 10; display: flex; gap: 8px; }
-    button { background: #0b1f3a; color: #52e3ff; border: 1px solid #35c2ff; padding: 6px 12px; font-family: monospace; cursor: pointer; }
-    button:hover { background: #143663; }
-    #status { position: fixed; bottom: 8px; left: 12px; z-index: 10; font-size: 12px; color: #ffd159; }
+    :root {
+      --bg: #040814;
+      --panel: rgba(7, 15, 32, 0.86);
+      --cyan: #3ee4ff;
+      --gold: #f7c959;
+      --coral: #ff476c;
+      --text: #eaf6ff;
+      --muted: #98b4d4;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      background: var(--bg); color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      overflow: hidden;
+    }
+    #canvas {
+      width: 100vw; height: 100vh; display: block;
+      touch-action: none; outline: none;
+    }
+    #toolbar {
+      position: fixed; top: 10px; right: 12px; z-index: 20;
+      display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end;
+      max-width: calc(100vw - 24px);
+    }
+    .tb-btn {
+      background: var(--panel); color: var(--cyan);
+      border: 1px solid rgba(62, 228, 255, 0.55);
+      border-radius: 3px; padding: 5px 9px; font-size: 11px;
+      font-family: inherit; cursor: pointer; letter-spacing: 0.4px;
+      backdrop-filter: blur(6px); text-decoration: none;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .tb-btn:hover:not(:disabled) {
+      background: rgba(20, 56, 98, 0.92); border-color: var(--gold); color: #ffffff;
+    }
+    .tb-btn:disabled { opacity: 0.42; cursor: not-allowed; }
+    .tb-btn.accent { color: var(--gold); border-color: rgba(247, 201, 89, 0.65); }
+
+    #loader {
+      position: fixed; inset: 0; z-index: 40;
+      background: radial-gradient(circle at 50% 35%, #0c1f3d 0%, #040814 72%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 24px; text-align: center;
+      transition: opacity 0.35s ease;
+    }
+    #loader.hidden { opacity: 0; pointer-events: none; }
+    #loader h1 {
+      margin: 0 0 6px; font-size: 26px; letter-spacing: 3px; color: #ffffff;
+      text-shadow: 0 0 18px rgba(62, 228, 255, 0.45);
+    }
+    #loader .sub {
+      color: var(--gold); font-size: 12px; letter-spacing: 1.2px; margin-bottom: 22px;
+    }
+    .bar-wrap {
+      width: min(440px, 86vw); height: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(62, 228, 255, 0.55);
+      border-radius: 2px; overflow: hidden; margin-bottom: 12px;
+    }
+    #bar-fill {
+      width: 4%; height: 100%;
+      background: linear-gradient(90deg, var(--cyan), var(--gold));
+      transition: width 0.1s linear;
+    }
+    #loader-text { font-size: 12px; color: var(--muted); max-width: 520px; }
+    #loader-error {
+      margin-top: 14px; color: var(--coral); font-size: 12px; max-width: 560px; display: none;
+    }
+
+    #help-card {
+      position: fixed; top: 48px; right: 12px; z-index: 25;
+      width: min(370px, calc(100vw - 24px));
+      background: rgba(6, 13, 28, 0.94);
+      border: 1px solid var(--cyan); border-radius: 4px;
+      padding: 12px 14px; font-size: 11px; line-height: 1.55;
+      display: none; backdrop-filter: blur(8px);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+    }
+    #help-card.open { display: block; }
+    #help-card h3 { margin: 0 0 8px; color: var(--gold); font-size: 12px; letter-spacing: 1px; }
+    #help-card kbd {
+      background: rgba(62, 228, 255, 0.14); border: 1px solid rgba(62, 228, 255, 0.45);
+      border-radius: 2px; padding: 1px 4px; color: #fff; font-family: inherit;
+    }
+    #status {
+      position: fixed; bottom: 6px; left: 10px; z-index: 15;
+      font-size: 11px; color: var(--gold);
+      background: rgba(4, 8, 20, 0.70); padding: 3px 8px; border-radius: 3px;
+      pointer-events: none; max-width: calc(100vw - 20px);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
   </style>
 </head>
 <body>
-  <div id="toolbar">
-    <button id="btn-vr" disabled>Enter WebXR VR</button>
-    <button id="btn-touch">Toggle Touch HUD</button>
+  <div id="loader">
+    <h1>1stPRTS // SOLARIS</h1>
+    <div class="sub">FIRST-PERSON PLANETARY-TO-ORBITAL RTS · C11 + SDL3 + WEBGL 2 + LUA 5.4</div>
+    <div class="bar-wrap"><div id="bar-fill"></div></div>
+    <div id="loader-text">Booting WebAssembly runtime &amp; fetching external loose assets (zero baked assets)...</div>
+    <div id="loader-error"></div>
   </div>
-  <div id="status">Loading external assets from sibling folders (zero baked assets)...</div>
-  <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
 
-  <script src="xr_bridge.js"></script>
+  <div id="toolbar">
+    <button class="tb-btn accent" id="btn-tactical" title="Live Solaris Tactical Defense (Key L)">Tactical [L]</button>
+    <button class="tb-btn accent" id="btn-sandbox" title="Seamless Planetary-to-Orbital Sandbox RTS (Key M)">Sandbox RTS [M]</button>
+    <button class="tb-btn" id="btn-catalog" title="Cycle all 6 Construct Classes / 76 Unique 3D Models (Key C)">76-Unit 3D Catalog [C]</button>
+    <button class="tb-btn" id="btn-touch">Touch HUD</button>
+    <button class="tb-btn" id="btn-vr" disabled>WebXR VR</button>
+    <button class="tb-btn" id="btn-help">Controls [?]</button>
+    <a class="tb-btn" href="https://github.com/stbange/1prtsg" target="_blank" rel="noopener">GitHub</a>
+  </div>
+
+  <div id="help-card">
+    <h3>1stPRTS COMMAND CONTROLS</h3>
+    <div><kbd>WASD</kbd> Move / Walk / Pilot &nbsp;|&nbsp; <kbd>Mouse</kbd> / <kbd>&larr;&rarr;</kbd> Look</div>
+    <div><b>Tactical Defense (<kbd>L</kbd>):</b> <kbd>LMB</kbd>/<kbd>J</kbd> Plasma Lance · <kbd>Q</kbd> EMP Pulse (x2.4 Crit) · <kbd>Shift</kbd> Dash · <kbd>F</kbd> Fleet Strike · <kbd>H</kbd> Repair · <kbd>R</kbd> Retry</div>
+    <div><b>Seamless Sandbox RTS (<kbd>M</kbd>):</b> <kbd>E</kbd> Holo-Globe / Console (<kbd>1-4</kbd> Orders) · <kbd>B</kbd> Board/Exit Construct · <kbd>G</kbd> Astrogator 400km LEO Orbit · <kbd>F5</kbd>/<kbd>F9</kbd> Save/Load</div>
+    <div><b>76-Unit 3D Catalog (<kbd>C</kbd>):</b> Press repeatedly to cycle all 6 classes (24 Buildings, 10 Vehicles, 10 Naval, 8 Aircraft, 14 Spacecraft, 10 Stations)</div>
+    <div><b>Showcase Scenes:</b> Keys <kbd>1</kbd>–<kbd>9</kbd> &nbsp;|&nbsp; <b>Mobile:</b> Auto-switches to virtual touch controls</div>
+  </div>
+
+  <div id="status">Initializing WebAssembly &amp; loose external manifest...</div>
+  <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+
+  <script src="./xr_bridge.js"></script>
   <script>
-    // Mount loose external assets/, scripts/, mods/, and config/ files from relative HTTP paths
-    // into Emscripten MEMFS before invoking main() — zero baked assets in 1prtsg.wasm!
+    const loaderEl = document.getElementById('loader');
+    const loaderTextEl = document.getElementById('loader-text');
+    const loaderErrEl = document.getElementById('loader-error');
+    const barFillEl = document.getElementById('bar-fill');
+    const statusEl = document.getElementById('status');
+    const canvasEl = document.getElementById('canvas');
+
+    function showFatal(msg) {
+      loaderErrEl.style.display = 'block';
+      loaderErrEl.textContent = msg;
+      statusEl.textContent = msg;
+      console.error('[1prtsg web]', msg);
+    }
+
+    function sendSyntheticKey(key, code, keyCode) {
+      canvasEl.focus();
+      const opts = { key, code, keyCode, which: keyCode, bubbles: true, cancelable: true };
+      window.dispatchEvent(new KeyboardEvent('keydown', opts));
+      setTimeout(() => window.dispatchEvent(new KeyboardEvent('keyup', opts)), 45);
+    }
+
+    document.getElementById('btn-tactical').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('l', 'KeyL', 76);
+    });
+    document.getElementById('btn-sandbox').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('m', 'KeyM', 77);
+    });
+    document.getElementById('btn-catalog').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('c', 'KeyC', 67);
+    });
+    document.getElementById('btn-help').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      document.getElementById('help-card').classList.toggle('open');
+    });
+    canvasEl.addEventListener('pointerdown', () => canvasEl.focus());
+
+    // Mount all loose external assets/, scripts/, mods/, and config/ files from relative HTTP paths
+    // into Emscripten MEMFS (/game/...) using 16 parallel workers — zero baked assets in 1prtsg.wasm!
     async function syncExternalManifestToFS(Module) {
-      const resp = await fetch('./manifest.json', { cache: 'no-store' });
-      if (!resp.ok) throw new Error('Failed to fetch ./manifest.json');
+      const resp = await fetch('./manifest.json', { cache: 'no-cache' });
+      if (!resp.ok) throw new Error('Failed to fetch ./manifest.json (HTTP ' + resp.status + ')');
       const manifest = await resp.json();
+      const files = manifest.files || [];
+      const total = files.length;
+
       const ensureDir = (dirPath) => {
         const parts = dirPath.split('/').filter(Boolean);
         let cur = '';
@@ -38,32 +189,72 @@
           try { Module.FS.mkdir(cur); } catch (_) {}
         }
       };
-      for (const rel of manifest.files) {
-        const r = await fetch('./' + rel, { cache: 'no-store' });
-        if (!r.ok) throw new Error('Missing external file: ' + rel);
-        const buf = new Uint8Array(await r.arrayBuffer());
-        const slash = rel.lastIndexOf('/');
-        if (slash > 0) ensureDir(rel.slice(0, slash));
-        Module.FS.writeFile('/' + rel, buf);
+      ensureDir('/game');
+
+      let done = 0;
+      let nextIdx = 0;
+      const concurrency = 16;
+
+      async function worker() {
+        while (nextIdx < total) {
+          const idx = nextIdx++;
+          const rel = files[idx];
+          const r = await fetch('./' + rel);
+          if (!r.ok) throw new Error('Missing external file: ' + rel + ' (HTTP ' + r.status + ')');
+          const buf = new Uint8Array(await r.arrayBuffer());
+          const full = '/game/' + rel;
+          const slash = full.lastIndexOf('/');
+          if (slash > 0) ensureDir(full.slice(0, slash));
+          Module.FS.writeFile(full, buf);
+          done++;
+          const pct = Math.round((done / Math.max(1, total)) * 100);
+          barFillEl.style.width = pct + '%';
+          loaderTextEl.textContent = 'Streaming external loose files: ' + done + ' / ' + total + ' (' + pct + '%)';
+        }
       }
-      document.getElementById('status').textContent =
-        'Loaded ' + manifest.files.length + ' external loose files (76 unique constructs). L=Tactical Defense | M=Seamless RTS | 1-9=Showcases | F5/F9=Save/Load.';
+
+      const workers = [];
+      for (let i = 0; i < Math.min(concurrency, total); i++) workers.push(worker());
+      await Promise.all(workers);
+      return total;
     }
 
+    // Verify WebGL 2 support early with a clear diagnostic
+    (function checkWebGL2() {
+      const probe = document.createElement('canvas');
+      if (!probe.getContext('webgl2')) {
+        showFatal('WebGL 2.0 is required to run 1stPRTS in the browser. Please enable hardware acceleration or try Chrome/Firefox/Edge/Safari.');
+      }
+    })();
+
     var Module = {
-      canvas: document.getElementById('canvas'),
+      canvas: canvasEl,
       noInitialRun: true,
+      print: (txt) => console.log('[1prtsg]', txt),
+      printErr: (txt) => console.warn('[1prtsg]', txt),
       onRuntimeInitialized: async function () {
-        await syncExternalManifestToFS(Module);
-        const isCoarse = window.matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0);
-        if (Module._rts_web_notify_touch_device) {
-          Module._rts_web_notify_touch_device(isCoarse ? 1 : 0);
+        try {
+          const count = await syncExternalManifestToFS(Module);
+          const isCoarse = window.matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0);
+          if (Module._rts_web_notify_touch_device) {
+            Module._rts_web_notify_touch_device(isCoarse ? 1 : 0);
+          }
+          if (window.initRtsWebXR) {
+            window.initRtsWebXR(Module, isCoarse);
+          }
+          const w = Math.max(640, Math.min(1920, window.innerWidth || 1280));
+          const h = Math.max(360, Math.min(1080, window.innerHeight || 720));
+          statusEl.textContent =
+            'Loaded ' + count + ' loose external files (76 unique 3D constructs) · L: Tactical | M: Sandbox RTS | C: 76-Unit Catalog | 1-9: Scenes';
+          Module.callMain(['--data-dir', '/game', '--width', String(w), '--height', String(h)]);
+          loaderEl.classList.add('hidden');
+          canvasEl.focus();
+        } catch (err) {
+          showFatal('Startup error: ' + (err && err.message ? err.message : String(err)));
         }
-        window.initRtsWebXR(Module);
-        Module.callMain(['--data-dir', '/']);
       }
     };
   </script>
-  <script async src="1prtsg.js"></script>
+  <script async src="./1prtsg.js"></script>
 </body>
 </html>
