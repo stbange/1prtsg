@@ -37,9 +37,10 @@ bool rts_obj_load_memory(const char *obj_text, RtsVec3f tint, RtsObjMesh *out_me
     }
     memset(out_mesh, 0, sizeof(*out_mesh));
 
-    RtsVec3f *pos = NULL; size_t pos_n = 0, pos_cap = 0;
-    Vec2f *uvs = NULL;    size_t uv_n = 0,  uv_cap = 0;
-    RtsVec3f *nrm = NULL; size_t nrm_n = 0, nrm_cap = 0;
+    RtsVec3f *pos = NULL;  size_t pos_n = 0, pos_cap = 0;
+    RtsVec3f *vcol = NULL; size_t vcol_cap = 0;
+    Vec2f *uvs = NULL;     size_t uv_n = 0,  uv_cap = 0;
+    RtsVec3f *nrm = NULL;  size_t nrm_n = 0, nrm_cap = 0;
     RtsVertex *out = NULL; size_t out_n = 0, out_cap = 0;
 
     const char *p = obj_text;
@@ -56,9 +57,21 @@ bool rts_obj_load_memory(const char *obj_text, RtsVec3f tint, RtsObjMesh *out_me
 
         if (line[0] == 'v' && line[1] == ' ') {
             RtsVec3f v = {0, 0, 0};
-            if (sscanf(line + 2, "%f %f %f", &v.x, &v.y, &v.z) == 3 &&
-                grow_buf((void **)&pos, &pos_cap, sizeof(*pos), pos_n + 1)) {
-                pos[pos_n++] = v;
+            RtsVec3f c = tint;
+            int parsed = sscanf(line + 2, "%f %f %f %f %f %f", &v.x, &v.y, &v.z, &c.x, &c.y, &c.z);
+            if (parsed >= 3 &&
+                grow_buf((void **)&pos, &pos_cap, sizeof(*pos), pos_n + 1) &&
+                grow_buf((void **)&vcol, &vcol_cap, sizeof(*vcol), pos_n + 1)) {
+                if (parsed == 6) {
+                    c.x *= tint.x;
+                    c.y *= tint.y;
+                    c.z *= tint.z;
+                } else {
+                    c = tint;
+                }
+                pos[pos_n] = v;
+                vcol[pos_n] = c;
+                pos_n++;
             }
         } else if (line[0] == 'v' && line[1] == 't' && line[2] == ' ') {
             Vec2f t = {0, 0};
@@ -94,6 +107,7 @@ bool rts_obj_load_memory(const char *obj_text, RtsVec3f tint, RtsObjMesh *out_me
                     int vi = 0, ti = 0, ni = 0;
                     parse_face_token(tri_tok[k], &vi, &ti, &ni);
                     RtsVec3f vp = (vi > 0 && (size_t)vi <= pos_n) ? pos[vi - 1] : (RtsVec3f){0, 0, 0};
+                    RtsVec3f vc = (vi > 0 && (size_t)vi <= pos_n) ? vcol[vi - 1] : tint;
                     Vec2f vt = (ti > 0 && (size_t)ti <= uv_n) ? uvs[ti - 1] : (Vec2f){(float)(k & 1), (float)(k >> 1)};
                     RtsVec3f vn = {0, 1, 0};
                     if (ni > 0 && (size_t)ni <= nrm_n) {
@@ -101,7 +115,7 @@ bool rts_obj_load_memory(const char *obj_text, RtsVec3f tint, RtsObjMesh *out_me
                     } else {
                         has_normal = false;
                     }
-                    fv[k] = (RtsVertex){vp.x, vp.y, vp.z, vn.x, vn.y, vn.z, vt.u, vt.v, tint.x, tint.y, tint.z};
+                    fv[k] = (RtsVertex){vp.x, vp.y, vp.z, vn.x, vn.y, vn.z, vt.u, vt.v, vc.x, vc.y, vc.z};
                 }
                 if (!has_normal) {
                     RtsVec3d e1 = rts_v3d(fv[1].px - fv[0].px, fv[1].py - fv[0].py, fv[1].pz - fv[0].pz);
@@ -123,6 +137,7 @@ bool rts_obj_load_memory(const char *obj_text, RtsVec3f tint, RtsObjMesh *out_me
     }
 
     free(pos);
+    free(vcol);
     free(uvs);
     free(nrm);
 

@@ -34,6 +34,8 @@ typedef struct RtsDrawCmd {
     RtsMat4f model;
     RtsVec4f tint;
     RtsVec3f light_dir;
+    RtsVec3f cam_pos;
+    RtsVec4f fog_color;
     float time_s;
     bool blend_additive;
     bool blend_alpha;
@@ -113,6 +115,7 @@ typedef struct RtsRetroRenderer {
     int height;
 
     RtsGfxHandle sh_mesh;
+    RtsGfxHandle sh_sky;
     RtsGfxHandle sh_shield;
     RtsGfxHandle sh_holo;
     RtsGfxHandle sh_hud;
@@ -137,10 +140,14 @@ typedef struct RtsRetroRenderer {
     RtsGfxHandle mesh_starfighter;
     RtsGfxHandle mesh_carrier;
     RtsGfxHandle mesh_crew3d;
+    RtsGfxHandle mesh_arch;
+    RtsGfxHandle mesh_terrain;
     RtsGfxHandle mesh_voxel_sample;
     RtsGfxHandle mesh_dynamic_2d;
     RtsGfxHandle mesh_dynamic_3d;
 
+    RtsVec3f cur_cam_pos;
+    RtsVec4f cur_fog_color;
     bool initialized;
 } RtsRetroRenderer;
 

@@ -9,7 +9,7 @@
 
 static void test_obj_and_png_io(void) {
     const char *obj =
-        "v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\n"
+        "v 0 0 0 1.0 0.8 0.5\nv 1 0 0\nv 1 1 0 0.2 1.8 2.0\nv 0 1 0\n"
         "vt 0 0\nvt 1 0\nvt 1 1\nvt 0 1\n"
         "vn 0 0 1\n"
         "f 1/1/1 2/2/1 3/3/1 4/4/1\n"
@@ -19,6 +19,8 @@ static void test_obj_and_png_io(void) {
     RtsObjMesh m;
     TEST_ASSERT_TRUE(rts_obj_load_memory(obj, (RtsVec3f){1, 1, 1}, &m));
     TEST_ASSERT_EQUAL_UINT(15u, m.vert_count);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 0.8f, m.verts[0].g);
+    TEST_ASSERT_FLOAT_WITHIN(1e-4f, 2.0f, m.verts[2].b);
     rts_obj_free(&m);
     TEST_ASSERT_FALSE(rts_obj_load_memory(NULL, (RtsVec3f){1, 1, 1}, &m));
     TEST_ASSERT_FALSE(rts_obj_load_memory("# empty", (RtsVec3f){1, 1, 1}, &m));
@@ -35,8 +37,8 @@ static void test_obj_and_png_io(void) {
     TEST_ASSERT_TRUE(rts_vfs_read_bytes(&vfs, "assets", "textures/hull_blue.png", &bytes, &sz));
     RtsImage img;
     TEST_ASSERT_TRUE(rts_image_load_png_memory(bytes, sz, &img));
-    TEST_ASSERT_EQUAL_INT(64, img.width);
-    TEST_ASSERT_EQUAL_INT(64, img.height);
+    TEST_ASSERT_EQUAL_INT(256, img.width);
+    TEST_ASSERT_EQUAL_INT(256, img.height);
     rts_image_free(&img);
     rts_vfs_free(bytes);
 

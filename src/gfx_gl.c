@@ -247,6 +247,8 @@ static void gl_draw(void *state, const RtsDrawCmd *cmd) {
     if ((loc = GLFN(GetUniformLocation)(prog, "u_model")) >= 0)     GLFN(UniformMatrix4fv)(loc, 1, GL_FALSE, cmd->model.m);
     if ((loc = GLFN(GetUniformLocation)(prog, "u_tint")) >= 0)      GLFN(Uniform4fv)(loc, 1, &cmd->tint.x);
     if ((loc = GLFN(GetUniformLocation)(prog, "u_light_dir")) >= 0) GLFN(Uniform3fv)(loc, 1, &cmd->light_dir.x);
+    if ((loc = GLFN(GetUniformLocation)(prog, "u_cam_pos")) >= 0)   GLFN(Uniform3fv)(loc, 1, &cmd->cam_pos.x);
+    if ((loc = GLFN(GetUniformLocation)(prog, "u_fog_color")) >= 0) GLFN(Uniform4fv)(loc, 1, &cmd->fog_color.x);
     if ((loc = GLFN(GetUniformLocation)(prog, "u_time")) >= 0)      GLFN(Uniform1f)(loc, cmd->time_s);
     if ((loc = GLFN(GetUniformLocation)(prog, "u_tex")) >= 0)       GLFN(Uniform1i)(loc, 0);
 

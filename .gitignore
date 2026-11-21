@@ -8,6 +8,8 @@ cmake-build-*/
 # Compiled objects and binaries
 *.o
 *.obj
+!assets/models/*.obj
+!mods/**/*.obj
 *.a
 *.lib
 *.so
