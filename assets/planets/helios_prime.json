@@ -1,0 +1,7 @@
+{
+  "name": "Helios Prime",
+  "radius_m": 6371000.0,
+  "mu": 398600441800000.0,
+  "atmo_ceiling_m": 120000.0,
+  "seed": 42
+}

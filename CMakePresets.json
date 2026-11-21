@@ -1,0 +1,71 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "linux-debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "linux-coverage",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-coverage",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ENABLE_COVERAGE": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "linux-release",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/linux-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc",
+      "generator": "Visual Studio 17 2022",
+      "binaryDir": "${sourceDir}/build/windows-msvc",
+      "cacheVariables": {
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "macos-universal",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/macos-universal",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_OSX_ARCHITECTURES": "arm64;x86_64",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "web-emscripten",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/web-emscripten",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_TESTING": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "linux-debug", "configurePreset": "linux-debug" },
+    { "name": "linux-coverage", "configurePreset": "linux-coverage" },
+    { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "web-emscripten", "configurePreset": "web-emscripten" }
+  ],
+  "testPresets": [
+    { "name": "linux-debug", "configurePreset": "linux-debug", "output": { "outputOnFailure": true } },
+    { "name": "linux-coverage", "configurePreset": "linux-coverage", "output": { "outputOnFailure": true } }
+  ]
+}

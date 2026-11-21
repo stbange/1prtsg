@@ -1,0 +1,15 @@
+-- SPDX-License-Identifier: MIT
+-- Sample Mod Override: Boosted Emerald Vanguard Plasma Heavy Tank (preserves all 10 ground vehicles)
+
+return {
+    { id = "veh_plasma_tank",       name = "Emerald Vanguard Plasma Tank",    class_id = 1, length = 11,  width = 5,   height = 4,   hull = 900,  shield = 600,  speed = 32, crew = 3,  rooms = 2, holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/plasma_tank.obj" },
+    { id = "veh_siege_hovertank",   name = "Hover Siege Plasma Tank",         class_id = 1, length = 15,  width = 7,   height = 5,   hull = 780,  shield = 520,  speed = 26, crew = 4,  rooms = 2, holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/plasma_tank.obj" },
+    { id = "veh_recon_skimmer",     name = "Recon Skimmer Jeep",              class_id = 1, length = 5.5, width = 2.6, height = 2.2, hull = 180,  shield = 90,   speed = 42, crew = 2,  rooms = 1, holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/plasma_tank.obj" },
+    { id = "veh_scout_rover",       name = "Armored Scout Rover",             class_id = 1, length = 7,   width = 3.4, height = 3,   hull = 260,  shield = 140,  speed = 34, crew = 3,  rooms = 1, holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/plasma_tank.obj" },
+    { id = "veh_apc",               name = "Armored Personnel Carrier",       class_id = 1, length = 9.5, width = 4,   height = 3.4, hull = 440,  shield = 200,  speed = 28, crew = 10, rooms = 2, holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/plasma_tank.obj" },
+    { id = "veh_assault_transport", name = "Shielded Heavy Assault Transport",class_id = 1, length = 16,  width = 6.5, height = 4.8, hull = 820,  shield = 540,  speed = 21, crew = 19, rooms = 3, holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/plasma_tank.obj" },
+    { id = "veh_cargo_truck",       name = "Surface Ore Cargo Convoy Truck",  class_id = 1, length = 14,  width = 4.5, height = 4.6, hull = 360,  shield = 100,  speed = 20, crew = 2,  rooms = 2, holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/plasma_tank.obj" },
+    { id = "veh_repair_rig",        name = "Mobile Engineering Repair Rig",   class_id = 1, length = 13,  width = 5,   height = 4.5, hull = 480,  shield = 220,  speed = 19, crew = 4,  rooms = 2, holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/plasma_tank.obj" },
+    { id = "veh_shield_crawler",    name = "Mobile Shield and SAM Crawler",   class_id = 1, length = 18,  width = 8,   height = 6.5, hull = 720,  shield = 1400, speed = 15, crew = 6,  rooms = 3, holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/plasma_tank.obj" },
+    { id = "veh_command_landship",  name = "Mobile Command Landship",         class_id = 1, length = 70,  width = 28,  height = 20,  hull = 3800, shield = 2400, speed = 12, crew = 30, rooms = 8, holo_globe = true,  escape_pod = true,  can_orbit = false, mesh = "models/citadel.obj" },
+}

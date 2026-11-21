@@ -1,84 +1,93 @@
 # 1stPRTS (`1prtsg`)
 
 > **Command a planetary-to-orbital empire from the boots up — with one life on the line.**  
-> An exclusively first-person Real-Time Strategy (RTS) game set in a bold-color retro space-opera universe on **true-scale spherical planets with real orbital mechanics**, where every building, vehicle, naval ship, aircraft, spacecraft, and space station is realistically huge, manned by simulated crew, and fully enterable and explorable.
+> An exclusively first-person Real-Time Strategy (RTS) game set in a classic bold-color retro space-opera universe on **true-scale spherical planets with real orbital mechanics**, where all **76 enterable constructs** (buildings, ground vehicles, naval ships, aircraft, spacecraft, and space stations) are realistically huge, manned by **12 crew roles**, and fully explorable.
 
 ---
 
-## Core Vision
+## Live Engine Screenshots (SDL3 + OpenGL 3.3 Core)
 
-Traditional RTS games put you in the sky as an invisible, omniscient camera. **1stPRTS** puts you physically **inside the world as the Commander**:
+| War Room 3D Planetary & Orbital Holo-Globe | Planetary Surface 1:1 Scale & Shield Dome |
+| :---: | :---: |
+| ![War Room 3D Holo-Globe](docs/screenshots/01_war_room_hologlobe.png) | ![Planetary Surface 1:1](docs/screenshots/02_planetary_surface_1to1.png) |
 
-- **Exclusively First-Person Perspective (Hardcore Ironman):** No disembodied god-camera — and if the Commander falls, the match is lost. Direct armies, fleets, and orbital shipyards through diegetic physical tools: your Tactical Wrist-Pad, Optical Laser Designator, vehicle/ship bridges, ATC towers, and room-sized **3D Planetary & Orbital Holo-Globes**.
-- **True-Scale Spherical Worlds & Orbital Mechanics:** Seamless 64-bit spherical planets with continents, oceans, atmospheric drag, shielded re-entry, and authentic Keplerian orbits for satellites, spacecraft, and orbital shipyards.
-- **Realistically Huge, Manned & Enterable Everything:** Every construct across all six scale classes — **buildings, ground vehicles, naval ships, aircraft, spacecraft, and space stations** — is built to 1:1 human scale, staffed by active crew with physical roles, and can be entered, operated, repaired, boarded, or evacuated via physical escape pods.
-- **Classic Bold-Color Retro Space-Opera 3D:** Bold faction liveries, shimmering energy shield domes, plasma/beam/torpedo fire, sleek angular starfighters, **hybrid crew visuals** (low-poly 3D up close inside interiors & WebXR; 8-/16-directional pixel sprites at range), and **optional chunked voxels**.
-- **Engine / Script Split & True Moddability:**
-  - **Core Engine (`C11` + `SDL3` + `OpenGL`):** 64-bit cube-sphere & orbital physics, nested local interior frames, retro 3D/WebXR rendering, deterministic single-player simulation core, spatial audio, input, and layered VFS.
-  - **Gameplay Layer (`Lua 5.4`):** Factions, units, crew AI, astrogator/commander AI, economy, Hardcore Ironman match rules, missions, and diegetic UI live in editable `.lua` scripts outside the executable.
-  - **Zero Baked Assets:** All graphics, sounds, shaders, interiors, planet configs, and scripts sit in plain folders beside the binary (`assets/`, `scripts/`, `mods/`) with hot-reload support.
+| Dropship Walkable Troop Bay (Orbital Ascent) | 400km Orbital Shipyard & Dreadnought Battle |
+| :---: | :---: |
+| ![Dropship Interior Ascent](docs/screenshots/03_dropship_interior_ascent.png) | ![Orbital Shipyard Drydock](docs/screenshots/04_orbital_shipyard_dreadnought.png) |
 
----
-
-## Target Platforms
-
-| Platform | Graphics / Runtime | Input Modes |
-| :--- | :--- | :--- |
-| **Windows** (x64) | SDL3 + OpenGL 3.3 Core | Keyboard + Mouse, Gamepad |
-| **Linux** (x64 / arm64) | SDL3 + OpenGL 3.3 Core / GLES 3.0 | Keyboard + Mouse, Gamepad |
-| **macOS** (Apple Silicon / Intel) | SDL3 + OpenGL 3.3 / 4.1 Core | Keyboard + Mouse, Gamepad |
-| **Web** (Emscripten / WASM) | SDL3 + WebGL 2.0 (loose external HTTP assets) | Keyboard + Mouse, Gamepad, **Auto-Touch on Mobile** |
-| **WebXR** (VR/XR via Web build) | Stereo WebGL 2.0 via WebXR Session | 6-DOF Head Tracking + Hand/Controller Rays |
+| Mobile Web Auto-Touch Virtual Controls |
+| :---: |
+| ![Mobile Web Auto-Touch HUD](docs/screenshots/05_mobile_web_touch_hud.png) |
 
 ---
 
-## Engineering & Quality Standards
+## Core Architecture & Features Implemented (Phase 1)
 
-1. **OpenSpec Spec-Driven Development:** Every capability is proposed, specified (`proposal.md`, `specs/<capability>/spec.md`, `design.md`, `tasks.md`), implemented, verified, and archived under [`openspec/`](openspec/config.yaml).
-2. **Unit Test Coverage >= 95%:** Both the C core engine (`gcov`/`llvm-cov` via CTest) and Lua script layer (VM line-coverage hook) enforce a minimum **95% unit test coverage** gate using strict hardware-abstraction seams.
-3. **Automated Game Tests:** Headless deterministic end-to-end Lua game scenarios exercise full commander workflows (3D Holo-Globe orders, orbital ascent & station docking, Hardcore Ironman loss vs. escape-pod survival, hybrid crew LOD, localized damage/repair, mobile touch input, WebXR ray interaction, and mod overrides), backed by offscreen OpenGL and headless browser WebGL2 smoke tests.
-
----
-
-## Documentation
-
-| Document | Purpose |
-| :--- | :--- |
-| [`docs/CONCEPT.md`](docs/CONCEPT.md) | **Game Concept & Design Bible** — retro space-opera identity, 3-tier 1st-person command toolkit, 3D Planetary Holo-Globe, all 6 enterable scale classes, Hardcore Ironman stakes, orbital mechanics, hybrid crew visuals, controls, modding, and phased roadmap. |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | **Technical Architecture Blueprint** — C/Lua boundary, 64-bit cube-sphere & Keplerian orbital engine, nested interior reference frames, external VFS (desktop & Web), unified OpenGL/WebGL2/WebXR pipeline, input switching, and >= 95% test/coverage + automated game test design. |
-| [`openspec/config.yaml`](openspec/config.yaml) | **OpenSpec Configuration** — spec-driven workflow configuration, confirmed design pillars, and verification rules. |
+- **Exclusively First-Person Commander (Hardcore Ironman):** No god-camera. Command armies and orbital fleets through diegetic physical consoles and glowing **3D Planetary & Orbital Holo-Globes**. Commander death ends the match unless you physically eject via an **Escape Pod**.
+- **True-Scale Spherical Planet & Keplerian Orbital Mechanics (`src/planet.c`):** 64-bit double-precision geocentric coordinates, 6-face cube-sphere planetary surface, East-North-Up (ENU) local surface frames, exponential atmosphere & re-entry heat model, Velocity-Verlet orbital propagation, Keplerian element solver, and Hohmann transfer delta-v solver.
+- **Doubled External Roster (`docs/ROSTER.md`, `scripts/units/`, `scripts/crew/`):** **76 distinct enterable constructs** (24 Buildings · 10 Ground Vehicles · 10 Naval Ships · 8 Aircraft · 14 Spacecraft · 10 Space Stations) + **12 crew/personnel roles** registered dynamically from external MIT Lua 5.4 scripts.
+- **Zero Baked Assets & Layered Mod VFS (`src/vfs.c`):** All models, textures, 8-directional sprites, optional voxels, GLSL shaders, audio, planet configs, and Lua scripts live in plain external directories (`assets/`, `scripts/`, `mods/`, `config/`) beside the binary (and load as loose HTTP files via `manifest.json` on Emscripten Web). Includes a working sample mod at [`mods/example_mod/`](mods/example_mod/mod.json).
+- **Retro Space-Opera 3D Renderer (`src/retro_renderer.c`, `src/gfx_gl.c`, `src/gfx_null.c`):** Unified OpenGL 3.3 Core / OpenGL ES 3.0 / WebGL 2.0 pipeline combining low-poly `.obj` 3D meshes, `GL_NEAREST` pixel textures, hybrid 3D/8-dir sprite crew LOD, optional face-culled chunked voxels (`src/voxel.c`), Fresnel energy shield domes, plasma beams, and bitmap HUD / Auto-Touch overlay.
+- **Cross-Platform Targets:** CMake presets for **Linux**, **Windows (MSVC)**, **macOS (Universal)**, and **Web / Mobile Auto-Touch / WebXR (Emscripten)** ([`web/index.html`](web/index.html), [`web/xr_bridge.js`](web/xr_bridge.js)).
 
 ---
 
-## Planned Repository & Runtime Layout
+## Quick Build, Test & Coverage Verification
 
-```text
-1prtsg/
-├── LICENSE                  # Dual-license overview
-├── LICENSE-CODE             # MIT License (code, scripts, shaders, tests, docs)
-├── LICENSE-ART              # CC BY 4.0 License (art and audio assets)
-├── README.md
-├── docs/                    # Concept bible and architecture blueprints
-├── openspec/                # OpenSpec config, canonical specs/, and changes/
-├── include/                 # Public C11 core engine headers (planned)
-├── src/                     # C11 core engine implementation (planned)
-├── tests/                   # C unit tests, Lua unit tests, and automated game tests (planned)
-├── assets/                  # External CC BY 4.0 assets (models, textures, sprites, voxels, audio, planets) + MIT shaders
-├── scripts/                 # External MIT Lua 5.4 gameplay scripts (factions, units, crew, AI, UI, rules, missions)
-└── mods/                    # External user mod packages layered over assets/ and scripts/
+### Prerequisites
+- C11 compiler (`gcc`, `clang`, or MSVC), CMake >= 3.24, Ninja (or Make), OpenGL development headers, Python 3.
+- Dependencies (**SDL3**, **Lua 5.4**, **Unity**, **stb**) are fetched automatically by CMake `FetchContent` (all permissive licenses — see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)).
+
+### Build & Run All Tests + >= 95% Coverage Gates (Linux)
+
+```bash
+# Configure & build with coverage instrumentation
+cmake --preset linux-coverage
+cmake --build --preset linux-coverage -j$(nproc)
+
+# Run C Unity unit tests, Lua unit tests (>= 95% Lua coverage), and 8 headless automated game tests
+ctest --preset linux-coverage --output-on-failure
+
+# Verify >= 95% C11 core engine line coverage
+python3 tools/check_coverage.py --build-dir build/linux-coverage --source-root . --min-line 95.0
+```
+
+### Run Interactively or Capture Live OpenGL Screenshots
+
+```bash
+# Launch interactive SDL3 + OpenGL window (press keys 1-5 to switch scenes, Esc to quit)
+./build/linux-coverage/1prtsg --data-dir .
+
+# Capture all 5 1280x720 OpenGL screenshots headlessly via Xvfb + Mesa
+LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
+  ./build/linux-coverage/1prtsg --data-dir . --capture-screenshots docs/screenshots
+```
+
+### Web / Emscripten + WebXR Build
+
+```bash
+emcmake cmake --preset web-emscripten
+cmake --build --preset web-emscripten
+# Serve repo root + web/index.html + 1prtsg.js + 1prtsg.wasm alongside loose assets/, scripts/, mods/, config/, manifest.json
 ```
 
 ---
 
-## Project Status
+## Documentation & OpenSpec
 
-**Current Stage:** Phase 0 Concept & Architecture Finalized — Ready for Phase 1 OpenSpec Change Proposal (`Citadel & Dropship` Vertical Slice).
+| Document | Purpose |
+| :--- | :--- |
+| [`docs/CONCEPT.md`](docs/CONCEPT.md) | Game Concept & Design Bible |
+| [`docs/ROSTER.md`](docs/ROSTER.md) | Complete Doubled Roster (76 Enterable Constructs + 12 Crew Roles) |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Technical Architecture & Verification Blueprint |
+| [`openspec/config.yaml`](openspec/config.yaml) | OpenSpec Spec-Driven Configuration |
+| [`openspec/specs/`](openspec/specs/) | Canonical Archived Behavior Specifications (7 capabilities) |
 
 ---
 
 ## Licensing
 
-- **Code, Lua Scripts, Shaders, Tests, and Documentation:** [MIT License](LICENSE-CODE)
+- **Code, Lua Scripts, Shaders, Build Files, Tests, and Documentation:** [MIT License](LICENSE-CODE)
 - **Art and Audio Assets:** [Creative Commons Attribution 4.0 International (CC BY 4.0)](LICENSE-ART)
 
-See [`LICENSE`](LICENSE) for exact scope boundaries.
+See [`LICENSE`](LICENSE) and [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) for details.

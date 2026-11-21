@@ -1,0 +1,15 @@
+-- SPDX-License-Identifier: MIT
+-- Class 2: Naval Ships (10 Enterable Surface & Subsurface Ships - Doubled Roster)
+
+return {
+    { id = "ship_missile_boat",     name = "Fast Missile Boat",                  class_id = 2, length = 34,  width = 9,  height = 10, hull = 680,  shield = 380,  speed = 28, crew = 6,   rooms = 3,  holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/dreadnought.obj" },
+    { id = "ship_hydrofoil",        name = "Hydrofoil Interceptor",              class_id = 2, length = 28,  width = 10, height = 8,  hull = 520,  shield = 300,  speed = 36, crew = 4,   rooms = 2,  holo_globe = false, escape_pod = false, can_orbit = false, mesh = "models/dreadnought.obj" },
+    { id = "ship_plasma_destroyer", name = "Plasma Destroyer",                   class_id = 2, length = 145, width = 18, height = 28, hull = 2600, shield = 1500, speed = 19, crew = 34,  rooms = 8,  holo_globe = false, escape_pod = true,  can_orbit = false, mesh = "models/dreadnought.obj" },
+    { id = "ship_aegis_frigate",    name = "Aegis Shield Frigate",               class_id = 2, length = 125, width = 16, height = 26, hull = 2100, shield = 2400, speed = 21, crew = 28,  rooms = 7,  holo_globe = false, escape_pod = true,  can_orbit = false, mesh = "models/dreadnought.obj" },
+    { id = "ship_plasma_cruiser",   name = "Heavy Plasma Cruiser",               class_id = 2, length = 210, width = 26, height = 36, hull = 4200, shield = 2800, speed = 16, crew = 58,  rooms = 10, holo_globe = true,  escape_pod = true,  can_orbit = false, mesh = "models/dreadnought.obj" },
+    { id = "ship_fleet_carrier",    name = "Fleet Starfighter Carrier",          class_id = 2, length = 340, width = 78, height = 58, hull = 7800, shield = 4600, speed = 15, crew = 120, rooms = 16, holo_globe = true,  escape_pod = true,  can_orbit = false, mesh = "models/dreadnought.obj" },
+    { id = "ship_amphibious_lhd",   name = "Amphibious Assault Landing Ship",    class_id = 2, length = 240, width = 38, height = 42, hull = 5100, shield = 2600, speed = 14, crew = 72,  rooms = 12, holo_globe = true,  escape_pod = true,  can_orbit = false, mesh = "models/dreadnought.obj" },
+    { id = "ship_attack_sub",       name = "Attack Submarine",                   class_id = 2, length = 110, width = 12, height = 18, hull = 1800, shield = 900,  speed = 17, crew = 26,  rooms = 6,  holo_globe = false, escape_pod = true,  can_orbit = false, mesh = "models/dreadnought.obj" },
+    { id = "ship_missile_sub",      name = "Orbital-Strike Ballistic Submarine", class_id = 2, length = 165, width = 15, height = 22, hull = 2800, shield = 1400, speed = 14, crew = 40,  rooms = 8,  holo_globe = false, escape_pod = true,  can_orbit = false, mesh = "models/dreadnought.obj" },
+    { id = "ship_relay_tender",     name = "Naval Relay and Logistics Tender",   class_id = 2, length = 150, width = 24, height = 34, hull = 2400, shield = 1300, speed = 15, crew = 32,  rooms = 7,  holo_globe = false, escape_pod = true,  can_orbit = false, mesh = "models/dreadnought.obj" },
+}

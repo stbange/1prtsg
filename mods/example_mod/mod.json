@@ -1,0 +1,8 @@
+{
+  "id": "example_mod",
+  "name": "Emerald Vanguard Overhaul",
+  "version": "1.0.0",
+  "license_code": "MIT",
+  "license_art": "CC-BY-4.0",
+  "description": "Demonstrates VFS mod layering by overriding ground vehicle Lua stats and hull_blue.png."
+}
