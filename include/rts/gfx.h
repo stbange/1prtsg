@@ -151,10 +151,13 @@ typedef struct RtsRetroRenderer {
     bool initialized;
 } RtsRetroRenderer;
 
+struct RtsTacticalSim;
+
 bool rts_renderer_init(RtsRetroRenderer *rr, RtsGfxBackend gfx, const RtsVfs *vfs, int width, int height);
 void rts_renderer_shutdown(RtsRetroRenderer *rr);
 void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsShowcaseScene scene, float time_s);
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s);
+void rts_renderer_render_tactical(RtsRetroRenderer *rr, const struct RtsTacticalSim *sim, const RtsWorld *world, const RtsInputRouter *input, float time_s);
 void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, const RtsXrFrameState *xr, float time_s);
 bool rts_renderer_capture_png(RtsRetroRenderer *rr, const char *out_path);
 

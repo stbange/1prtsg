@@ -72,7 +72,7 @@ void rts_controller_step(RtsCommanderController *ctrl, RtsWorld *w, const RtsInp
         return;
     }
 
-    /* RTS_CMD_ON_FOOT locomotion inside current SpatialFrame */
+    /* RTS_CMD_ON_FOOT locomotion inside current SpatialFrame with snappy non-linear acceleration/damping */
     double cy = cos(w->commander.yaw_rad);
     double sy = sin(w->commander.yaw_rad);
     RtsVec3d fwd = rts_v3d(sy, 0.0, -cy);
@@ -82,7 +82,13 @@ void rts_controller_step(RtsCommanderController *ctrl, RtsWorld *w, const RtsInp
     if (mlen > 1.0) {
         move = rts_v3d_scale(move, 1.0 / mlen);
     }
-    RtsVec3d next_pos = rts_v3d_add(w->commander.local_pos, rts_v3d_scale(move, ctrl->walk_speed_mps * dt_s));
+    RtsVec3d target_vel = rts_v3d_scale(move, ctrl->walk_speed_mps);
+    double damp_rate = (mlen > 0.05) ? 20.0 : 15.0;
+    double alpha = 1.0 - exp(-damp_rate * dt_s);
+    w->commander.local_vel.x += (target_vel.x - w->commander.local_vel.x) * alpha;
+    w->commander.local_vel.z += (target_vel.z - w->commander.local_vel.z) * alpha;
+
+    RtsVec3d next_pos = rts_v3d_add(w->commander.local_pos, rts_v3d_scale(w->commander.local_vel, dt_s));
     const RtsInteriorRoom *cur_room = rts_interior_find_room_at(&w->interiors, w->commander.frame_id, w->commander.local_pos);
     if (cur_room && !rts_aabb_contains(cur_room->local_bounds, next_pos)) {
         /* Clamp cleanly inside current pressurized room unless stepping into a portal */
@@ -93,8 +99,12 @@ void rts_controller_step(RtsCommanderController *ctrl, RtsWorld *w, const RtsInp
     rts_interior_try_portal_transfer(&w->interiors, &w->commander.frame_id, &w->commander.local_pos, &w->commander.local_vel);
 
     if (intent->interact_pressed) {
+        ctrl->interact_buffer_s = 0.12; /* 120ms input buffer for responsive console interaction */
+    }
+    if (ctrl->interact_buffer_s > 0.0) {
         const RtsConsoleStation *con = rts_interior_find_nearest_console(&w->interiors, w->commander.frame_id, w->commander.local_pos);
         if (con) {
+            ctrl->interact_buffer_s = 0.0;
             ctrl->active_console_id = con->id;
             if (con->type == RTS_CONSOLE_HOLO_GLOBE) {
                 ctrl->mode = RTS_CMD_AT_HOLO_GLOBE;
@@ -106,6 +116,8 @@ void rts_controller_step(RtsCommanderController *ctrl, RtsWorld *w, const RtsInp
             } else if (con->type == RTS_CONSOLE_ESCAPE_POD) {
                 rts_world_commander_launch_escape_pod(w);
             }
+        } else {
+            ctrl->interact_buffer_s = fmax(0.0, ctrl->interact_buffer_s - dt_s);
         }
     }
 }

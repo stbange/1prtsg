@@ -18,4 +18,10 @@ function M.is_shield_online(ent)
     return ent ~= nil and ent.shield > 0
 end
 
+function M.emp_prime_salvo(target_id, base_power, subsys, emp_primed)
+    local mult = emp_primed and 2.4 or 1.0
+    engine.world.apply_damage(target_id, base_power * mult, subsys)
+    return engine.world.get_entity(target_id), mult
+end
+
 return M

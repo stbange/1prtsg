@@ -186,6 +186,8 @@ add_library(rts_core STATIC
     src/image_io.c
     src/gfx_null.c
     src/retro_renderer.c
+    src/tactical_sim.c
+    src/fun_eval.c
     src/lua_vm.c
 )
 target_include_directories(rts_core PUBLIC "${CMAKE_SOURCE_DIR}/include")
@@ -272,6 +274,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         tests/test_boarding.c
         tests/test_config_and_save.c
         tests/test_assets_and_renderer.c
+        tests/test_fun_eval.c
         tests/test_lua_vm.c
     )
     target_link_libraries(rts_unit_tests PRIVATE rts_core unity_test)

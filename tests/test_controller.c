@@ -56,13 +56,19 @@ static void test_first_person_locomotion_consoles_and_piloting(void) {
     for (int i = 0; i < 6; ++i) rts_controller_step(&ctrl, &w, &in, 0.5);
     TEST_ASSERT_TRUE(w.commander.local_pos.x <= 8.0 && w.commander.local_pos.z >= -8.0);
 
-    /* Interact with Holo-Globe console, then exit */
-    w.commander.local_pos = rts_v3d(0, 1.5, -1.5);
+    /* Buffered interact press slightly out of range, then stepping into Holo-Globe console */
+    w.commander.local_pos = rts_v3d(0, 1.5, 1.5);
     memset(&in, 0, sizeof(in));
     in.interact_pressed = true;
-    rts_controller_step(&ctrl, &w, &in, 0.1);
+    rts_controller_step(&ctrl, &w, &in, 0.04);
+    TEST_ASSERT_EQUAL_INT(RTS_CMD_ON_FOOT, ctrl.mode);
+    TEST_ASSERT_TRUE(ctrl.interact_buffer_s > 0.0);
+    w.commander.local_pos = rts_v3d(0, 1.5, -1.5);
+    in.interact_pressed = false;
+    rts_controller_step(&ctrl, &w, &in, 0.04);
     TEST_ASSERT_EQUAL_INT(RTS_CMD_AT_HOLO_GLOBE, ctrl.mode);
     TEST_ASSERT_TRUE(w.commander.at_holo_globe);
+    in.interact_pressed = true;
     rts_controller_step(&ctrl, &w, &in, 0.1);
     TEST_ASSERT_EQUAL_INT(RTS_CMD_ON_FOOT, ctrl.mode);
 

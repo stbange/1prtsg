@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #include "rts/gfx.h"
+#include "rts/tactical_sim.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1054,6 +1055,210 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
                       "1STPRTS LIVE FIRST-PERSON COMMANDER VIEW",
                       "WASD: WALK/PILOT | TAB: WRIST-PAD | E: INTERACT | 1-9: SHOWCASE SCENES",
                       "LIVE SIMULATION ACTIVE - FLOATING-ORIGIN 64-BIT CAMERA RELATIVE TO COMMANDER.",
+                      false);
+    rr->gfx.end_frame(rr->gfx.state);
+}
+
+void rts_renderer_render_tactical(RtsRetroRenderer *rr, const RtsTacticalSim *sim, const RtsWorld *world, const RtsInputRouter *input, float time_s) {
+    if (!rr || !rr->initialized || !sim || !world) return;
+    float aspect = (float)rr->width / (float)(rr->height > 0 ? rr->height : 1);
+    RtsMat4f proj = rts_mat4_perspective((float)(62.0 * RTS_DEG2RAD), aspect, 0.2f, 1600.0f);
+    RtsVec3f sun = {0.62f, 0.36f, -0.70f};
+    RtsVec3f light = {0.58f, 0.78f, 0.38f};
+    RtsQuatd idq = rts_quat_identity();
+
+    /* First-person camera with subtle trauma-squared recoil/impact shake (strictly <= 4% viewport height) */
+    RtsVec3f cam = {
+        sim->player_pos.x + sim->camera_shake_offset.x * 0.22f,
+        sim->player_pos.y + 2.3f + sim->camera_shake_offset.y * 0.22f,
+        sim->player_pos.z
+    };
+    RtsVec3f fwd = {
+        sinf(sim->player_yaw) * cosf(sim->player_pitch),
+        sinf(sim->player_pitch) - 0.06f,
+        -cosf(sim->player_yaw) * cosf(sim->player_pitch)
+    };
+    RtsVec3f tgt = {cam.x + fwd.x * 20.0f, cam.y + fwd.y * 20.0f, cam.z + fwd.z * 20.0f};
+    RtsMat4f vp = rts_mat4_mul(proj, rts_mat4_look_at(cam, tgt, (RtsVec3f){0.0f, 1.0f, 0.0f}));
+    rr->cur_cam_pos = cam;
+    rr->cur_fog_color = sim->game_over ? (RtsVec4f){0.34f, 0.08f, 0.14f, 0.78f} : (RtsVec4f){0.26f, 0.36f, 0.48f, 0.68f};
+
+    rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.04f, 0.09f, 0.18f, 1.0f});
+    draw_sky_dome(rr, vp, cam, sun, sim->game_over ? 2.0f : 0.0f, time_s);
+
+    /* Solaris Citadel Defensive Apron Terrain + Towering Sculpted Citadel + Shield Dome */
+    draw_mesh(rr, rr->sh_mesh, rr->mesh_terrain, RTS_GFX_INVALID, vp,
+              rts_mat4_from_quat_trs(idq, (RtsVec3f){0.0f, -0.5f, -10.0f}, (RtsVec3f){1.0f, 1.0f, 1.0f}),
+              (RtsVec4f){0.86f, 0.90f, 0.96f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+    draw_box(rr, vp, (RtsVec3f){0.0f, -0.25f, 0.0f}, (RtsVec3f){80.0f, 0.5f, 80.0f}, idq,
+             rr->tex_deck_floor, (RtsVec4f){0.74f, 0.80f, 0.90f, 1.0f}, light, time_s);
+    draw_mesh(rr, rr->sh_mesh, rr->mesh_citadel, rr->tex_hull_blue, vp,
+              rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.35), (RtsVec3f){0.0f, 0.0f, -46.0f}, (RtsVec3f){12.0f, 12.0f, 12.0f}),
+              (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+    /* Resupply Caches (Glowing Solar Gold Beacons during Breather Troughs) */
+    for (int i = 0; i < RTS_TAC_MAX_PICKUPS; ++i) {
+        if (!sim->pickups[i].active) continue;
+        RtsVec3f p = sim->pickups[i].pos;
+        float bob = 0.35f * sinf(time_s * 4.5f + (float)i);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(idq, (RtsVec3f){p.x, p.y + bob, p.z}, (RtsVec3f){1.0f, 1.0f, 1.0f}),
+                  (RtsVec4f){1.0f, 0.88f, 0.26f, 0.92f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(idq, (RtsVec3f){p.x, 0.25f, p.z}, (RtsVec3f){2.2f, 2.2f, 2.2f}),
+                  (RtsVec4f){0.28f, 1.0f, 0.84f, 0.95f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+    }
+
+    /* Active Crimson Syndicate Hostiles + Telegraph Charge Rings + EMP Primed Halos + Hex Shields */
+    for (int i = 0; i < RTS_TAC_MAX_ENEMIES; ++i) {
+        const RtsTacEnemy *e = &sim->enemies[i];
+        if (!e->active) continue;
+        float sq = (e->squash_timer_s > 0.0f) ? (1.0f + 0.22f * (e->squash_timer_s / 0.12f)) : 1.0f;
+        float sy_sc = 1.0f / sq;
+        RtsGfxHandle mesh = (e->archetype == RTS_ENEMY_INTERCEPTOR) ? rr->mesh_starfighter
+                          : ((e->archetype == RTS_ENEMY_SHIELD_CRUISER) ? rr->mesh_tank : rr->mesh_dreadnought);
+        float base_sc = (e->archetype == RTS_ENEMY_INTERCEPTOR) ? 1.55f
+                      : ((e->archetype == RTS_ENEMY_SHIELD_CRUISER) ? 1.95f : 1.35f);
+        double yaw = atan2((double)(sim->player_pos.x - e->pos.x), (double)(sim->player_pos.z - e->pos.z));
+        if (e->archetype != RTS_ENEMY_SHIELD_CRUISER) {
+            yaw += RTS_PI; /* Orient dagger prows & starfighter noses directly toward the Commander */
+        }
+        RtsQuatd erot = rts_quat_from_axis_angle(rts_v3d(0, 1, 0), yaw);
+        RtsVec4f tint = (e->hit_flash_s > 0.0f) ? (RtsVec4f){1.4f, 1.4f, 1.4f, 1.0f}
+                      : ((e->emp_primed_timer_s > 0.0f) ? (RtsVec4f){0.45f, 1.15f, 1.35f, 1.0f} : (RtsVec4f){1.0f, 0.92f, 0.96f, 1.0f});
+        draw_mesh(rr, rr->sh_mesh, mesh, rr->tex_hull_red, vp,
+                  rts_mat4_from_quat_trs(erot, e->pos, (RtsVec3f){base_sc * sq, base_sc * sy_sc, base_sc * sq}),
+                  tint, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+        /* Shielded Cruiser Hex Shield */
+        if (e->shield > 1.0f) {
+            float sr = e->radius_m * 1.45f;
+            draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                      rts_mat4_from_quat_trs(idq, e->pos, (RtsVec3f){sr, sr * 0.8f, sr}),
+                      (RtsVec4f){1.0f, 0.34f, 0.48f, 0.50f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+        }
+        /* High-Contrast 420ms Attack Telegraph Ring (bright solar gold -> coral pulse before firing!) */
+        if (e->telegraph_timer_s > 0.0f && e->telegraph_total_s > 0.0f) {
+            float frac = 1.0f - rts_clampf(e->telegraph_timer_s / e->telegraph_total_s, 0.0f, 1.0f);
+            float tr = e->radius_m * (2.6f - 1.3f * frac);
+            draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                      rts_mat4_from_quat_trs(idq, (RtsVec3f){e->pos.x, e->pos.y + 0.6f, e->pos.z}, (RtsVec3f){tr, tr, tr}),
+                      (RtsVec4f){1.0f, 0.92f - 0.55f * frac, 0.18f, 1.0f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+            draw_plasma_beam(rr, vp, e->pos,
+                             (RtsVec3f){e->pos.x + e->telegraph_aim_dir.x * 8.0f, e->pos.y + e->telegraph_aim_dir.y * 8.0f, e->pos.z + e->telegraph_aim_dir.z * 8.0f},
+                             0.08f + 0.14f * frac, (RtsVec4f){1.0f, 0.85f, 0.22f, 0.90f}, time_s);
+        }
+    }
+
+    /* High-Contrast Glowing Projectiles (Electric Cyan Player Bolts vs Vivid Molten-Coral Enemy Bolts) */
+    for (int i = 0; i < RTS_TAC_MAX_PROJECTILES; ++i) {
+        const RtsTacProjectile *pr = &sim->projectiles[i];
+        if (!pr->active) continue;
+        RtsVec4f col = pr->from_player ? (RtsVec4f){0.22f, 1.0f, 0.96f, 1.0f} : (RtsVec4f){1.0f, 0.28f, 0.42f, 1.0f};
+        RtsVec3f tail = {pr->pos.x - pr->vel.x * 0.08f, pr->pos.y - pr->vel.y * 0.08f, pr->pos.z - pr->vel.z * 0.08f};
+        draw_plasma_beam(rr, vp, tail, pr->pos, pr->radius_m * 0.78f, col, time_s);
+    }
+
+    /* Directional Juice Particle Bursts */
+    for (int i = 0; i < RTS_TAC_MAX_PARTICLES; ++i) {
+        const RtsTacParticle *pt = &sim->particles[i];
+        if (!pt->active) continue;
+        float alpha = rts_clampf(pt->life_s / fmaxf(0.01f, pt->max_life_s), 0.0f, 1.0f);
+        float sz = pt->size_m * 0.72f;
+        draw_mesh(rr, rr->sh_holo, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(idq, pt->pos, (RtsVec3f){sz, sz, sz}),
+                  (RtsVec4f){pt->color.x, pt->color.y, pt->color.z, alpha * 0.88f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+    }
+
+    /* High-Contrast 2D Tactical HUD (Ability Cooldown Bar, Wave Banner, Popups, Reticle Hitmarker, Game Over Retry) */
+    float w = (float)rr->width, h = (float)rr->height;
+    RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+
+    /* Damage impact crimson vignette border */
+    if (sim->damage_vignette_s > 0.0f || sim->game_over) {
+        float va = sim->game_over ? 0.34f : (sim->damage_vignette_s * 1.1f);
+        hud_quad(rr, ortho, 0.0f, 0.0f, w, 10.0f, (RtsVec4f){1.0f, 0.18f, 0.32f, va});
+        hud_quad(rr, ortho, 0.0f, h - 10.0f, w, 10.0f, (RtsVec4f){1.0f, 0.18f, 0.32f, va});
+    }
+
+    /* Center High-Contrast Reticle + Hitmarker Pop (hidden during Game Over modal so zero UI overlap) */
+    if (!sim->game_over) {
+        RtsVec4f ret_col = (sim->reticle_flash_s > 0.0f) ? (RtsVec4f){1.0f, 0.90f, 0.25f, 1.0f} : (RtsVec4f){0.28f, 1.0f, 0.94f, 0.95f};
+        float rsz = (sim->reticle_flash_s > 0.0f) ? 14.0f : 9.0f;
+        hud_quad(rr, ortho, w * 0.5f - rsz, h * 0.5f - 1.5f, rsz * 2.0f, 3.0f, ret_col);
+        hud_quad(rr, ortho, w * 0.5f - 1.5f, h * 0.5f - rsz, 3.0f, rsz * 2.0f, ret_col);
+    }
+
+    /* Wave Director Status Pill & Score/Energy Strip */
+    char wave_str[96];
+    snprintf(wave_str, sizeof(wave_str), "WAVE %d [%s] | SCORE: %.0f | KILLS: %u | GRAZES: %u",
+             sim->wave_number,
+             sim->wave_phase == RTS_WAVE_BREATHER ? "BREATHER - RESUPPLY" : "ASSAULT",
+             sim->score, sim->enemies_killed, sim->near_misses_total);
+    hud_border_box(rr, ortho, w * 0.5f - 280.0f, 68.0f, 560.0f, 28.0f,
+                   (RtsVec4f){0.03f, 0.07f, 0.14f, 0.88f},
+                   sim->wave_phase == RTS_WAVE_BREATHER ? (RtsVec4f){1.0f, 0.86f, 0.28f, 0.96f} : (RtsVec4f){0.26f, 0.96f, 1.0f, 0.95f});
+    hud_text(rr, ortho, w * 0.5f - 266.0f, 77.0f, 1.15f, (RtsVec4f){0.96f, 0.98f, 1.0f, 1.0f}, wave_str);
+
+    /* Bottom-Left Health / Exo-Shield / Tactical Energy / Lance Heat Bars */
+    hud_border_box(rr, ortho, 18.0f, h - 148.0f, 290.0f, 90.0f, (RtsVec4f){0.03f, 0.07f, 0.14f, 0.88f}, (RtsVec4f){0.25f, 0.94f, 1.0f, 0.90f});
+    char hp_str[64];
+    snprintf(hp_str, sizeof(hp_str), "HP: %.0f  SHD: %.0f  ENG: %.0f", sim->health, sim->exo_shield, sim->tactical_energy);
+    hud_text(rr, ortho, 28.0f, h - 138.0f, 1.08f, (RtsVec4f){0.96f, 0.98f, 1.0f, 1.0f}, hp_str);
+    hud_quad(rr, ortho, 28.0f, h - 114.0f, 268.0f, 10.0f, (RtsVec4f){0.14f, 0.08f, 0.12f, 1.0f});
+    hud_quad(rr, ortho, 28.0f, h - 114.0f, 268.0f * rts_clampf(sim->health / sim->max_health, 0.0f, 1.0f), 10.0f, (RtsVec4f){0.30f, 1.0f, 0.68f, 1.0f});
+    hud_quad(rr, ortho, 28.0f, h - 98.0f, 268.0f, 10.0f, (RtsVec4f){0.06f, 0.14f, 0.24f, 1.0f});
+    hud_quad(rr, ortho, 28.0f, h - 98.0f, 268.0f * rts_clampf(sim->exo_shield / sim->max_exo_shield, 0.0f, 1.0f), 10.0f, (RtsVec4f){0.24f, 0.94f, 1.0f, 1.0f});
+    hud_quad(rr, ortho, 28.0f, h - 82.0f, 268.0f, 10.0f, (RtsVec4f){0.16f, 0.12f, 0.06f, 1.0f});
+    hud_quad(rr, ortho, 28.0f, h - 82.0f, 268.0f * rts_clampf(sim->tactical_energy / sim->max_tactical_energy, 0.0f, 1.0f), 10.0f, (RtsVec4f){1.0f, 0.84f, 0.28f, 1.0f});
+
+    /* Bottom-Right 5 Tactical Ability Cards (LMB / Q / SHF / F / H) */
+    static const char *act_labels[RTS_ACT_COUNT] = {"[J] LANCE", "[Q] EMP", "[S] DASH", "[F] FLEET", "[H] REPR"};
+    for (int a = 0; a < RTS_ACT_COUNT; ++a) {
+        float bx = w - 538.0f + (float)a * 104.0f;
+        float by = h - 114.0f;
+        bool ready = (sim->cooldown_s[a] <= 0.0f) && !(a == RTS_ACT_FLEET_STRIKE && sim->tactical_energy < 22.0f);
+        RtsVec4f bcol = ready ? (RtsVec4f){0.28f, 0.98f, 0.92f, 0.95f} : (RtsVec4f){0.42f, 0.48f, 0.58f, 0.72f};
+        hud_border_box(rr, ortho, bx, by, 96.0f, 52.0f, (RtsVec4f){0.03f, 0.07f, 0.14f, 0.88f}, bcol);
+        hud_text(rr, ortho, bx + 8.0f, by + 10.0f, 1.0f, ready ? (RtsVec4f){0.96f, 0.98f, 1.0f, 1.0f} : (RtsVec4f){0.62f, 0.68f, 0.76f, 1.0f}, act_labels[a]);
+        char cd_txt[16];
+        if (ready) snprintf(cd_txt, sizeof(cd_txt), "READY");
+        else snprintf(cd_txt, sizeof(cd_txt), "%.1fS", sim->cooldown_s[a]);
+        hud_text(rr, ortho, bx + 16.0f, by + 30.0f, 1.0f, ready ? (RtsVec4f){1.0f, 0.88f, 0.30f, 1.0f} : (RtsVec4f){1.0f, 0.42f, 0.52f, 1.0f}, cd_txt);
+    }
+
+    /* Active Multisensory UI Pop Callouts (capped at 3 max, hidden during Game Over modal) */
+    if (!sim->game_over) {
+        float py = 108.0f;
+        int shown = 0;
+        for (int i = 0; i < RTS_TAC_MAX_POPUPS && shown < 3; ++i) {
+            if (!sim->popups[i].active) continue;
+            hud_border_box(rr, ortho, w * 0.5f - 170.0f, py, 340.0f, 26.0f, (RtsVec4f){0.04f, 0.07f, 0.15f, 0.86f}, sim->popups[i].color);
+            hud_text(rr, ortho, w * 0.5f - 154.0f, py + 8.0f, 1.15f, sim->popups[i].color, sim->popups[i].text);
+            py += 32.0f;
+            shown++;
+        }
+    }
+
+    /* Crisp Instant-Retry Game Over Modal */
+    if (sim->game_over) {
+        hud_border_box(rr, ortho, w * 0.5f - 290.0f, h * 0.5f - 95.0f, 580.0f, 190.0f,
+                       (RtsVec4f){0.10f, 0.02f, 0.05f, 0.94f}, (RtsVec4f){1.0f, 0.28f, 0.42f, 1.0f});
+        hud_text(rr, ortho, w * 0.5f - 220.0f, h * 0.5f - 68.0f, 2.0f, (RtsVec4f){1.0f, 0.32f, 0.44f, 1.0f}, "COMMANDER DOWN [IRONMAN]");
+        char stat_str[96];
+        snprintf(stat_str, sizeof(stat_str), "SURVIVED: %.1fS | SCORE: %.0f | KILLS: %u | EMP CRITS: %u",
+                 sim->sim_time_s, sim->score, sim->enemies_killed, sim->emp_crits_total);
+        hud_text(rr, ortho, w * 0.5f - 258.0f, h * 0.5f - 10.0f, 1.15f, (RtsVec4f){0.96f, 0.98f, 1.0f, 1.0f}, stat_str);
+        hud_border_box(rr, ortho, w * 0.5f - 210.0f, h * 0.5f + 32.0f, 420.0f, 38.0f,
+                       (RtsVec4f){0.04f, 0.14f, 0.20f, 0.96f}, (RtsVec4f){0.28f, 1.0f, 0.86f, 1.0f});
+        hud_text(rr, ortho, w * 0.5f - 186.0f, h * 0.5f + 45.0f, 1.25f, (RtsVec4f){0.34f, 1.0f, 0.88f, 1.0f}, "PRESS [R] OR [ENTER] FOR INSTANT RETRY");
+    }
+
+    render_hud_common(rr, world, input,
+                      "SOLARIS CITADEL DEFENSE - LIVE FIRST-PERSON TACTICAL COMBAT",
+                      "WASD: MOVE | J: PLASMA | Q: EMP | SHIFT: DASH | F: FLEET STRIKE | H: REPAIR | R: RETRY",
+                      sim->game_over ? "IRONMAN DEFEAT - INSTANT IN-MEMORY RETRY READY IN 0.25S (PRESS R/ENTER)!"
+                                     : "TACTICAL LINK ACTIVE: PRIME SHIELDED CRUISERS WITH [Q] EMP FOR x2.4 PLASMA CRIT!",
                       false);
     rr->gfx.end_frame(rr->gfx.state);
 }

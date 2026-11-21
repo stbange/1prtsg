@@ -19,4 +19,12 @@ function M.tick_faction(faction_id, foundry_id, flagship_id, target_id)
     return actions
 end
 
+function M.wave_director_phase(elapsed_s)
+    local cycle = elapsed_s % 24.5
+    if cycle < 18.0 then
+        return "ASSAULT", math.floor(elapsed_s / 24.5) + 1
+    end
+    return "BREATHER", math.floor(elapsed_s / 24.5) + 1
+end
+
 return M

@@ -96,13 +96,17 @@ local snap = session.save_world_snapshot()
 check(snap ~= nil and string.sub(snap, 1, 11) == "RTS_SAVE_V1", "Snapshot must emit RTS_SAVE_V1 header")
 check(session.restore_world_snapshot(snap), "Restoring valid RTS_SAVE_V1 snapshot must succeed")
 
--- 8. Combat, shield & localized subsystem damage unit test
+-- 8. Combat, shield, EMP-Prime synergy & Wave Director unit test
 local combat = require("rules.combat")
 local enemy = combat.plasma_salvo(ACTIVE_MISSION.enemy_tank, 100, combat.SUBSYS_ENGINES)
 check(combat.is_shield_online(enemy), "Enemy shield should remain online after light hit")
-enemy = combat.plasma_salvo(ACTIVE_MISSION.enemy_tank, 400, combat.SUBSYS_ENGINES)
-check(not combat.is_shield_online(enemy), "Enemy shield should deplete after heavy salvo")
-check(enemy.engine_hp < 100, "Engine subsystem HP should degrade after shield collapse")
+local e_emp, emp_mult = combat.emp_prime_salvo(ACTIVE_MISSION.enemy_tank, 180, combat.SUBSYS_ENGINES, true)
+check(emp_mult == 2.4 and not combat.is_shield_online(e_emp), "EMP-Primed salvo should apply 2.4x synergy and break shields")
+check(e_emp.engine_hp < 100, "Engine subsystem HP should degrade after shield collapse")
+local sk_ai = require("ai.skirmish_ai")
+local ph1, wv1 = sk_ai.wave_director_phase(5.0)
+local ph2, wv2 = sk_ai.wave_director_phase(20.0)
+check(ph1 == "ASSAULT" and wv1 == 1 and ph2 == "BREATHER" and wv2 == 1, "Wave Director must alternate ASSAULT and BREATHER phases")
 
 -- 9. Hardcore Ironman status & Escape Pod branches
 local ironman = require("rules.ironman")

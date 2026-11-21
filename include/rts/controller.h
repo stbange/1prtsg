@@ -38,6 +38,7 @@ typedef struct RtsCommanderController {
     uint32_t piloted_entity_id;
     double walk_speed_mps;
     double pilot_throttle;
+    double interact_buffer_s;
     RtsAstrogatorPlan astrogator;
 } RtsCommanderController;
 

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: MIT */
+#include "rts/fun_eval.h"
 #include "rts/gfx.h"
 #include "rts/input.h"
 #include "rts/lua_vm.h"
@@ -24,7 +25,7 @@ static int run_headless(const RtsAppConfig *cfg) {
     }
 
     RtsWorld world;
-    rts_world_init(&world, rts_planet_earthlike(42u), 1337u);
+    rts_world_init(&world, rts_planet_earthlike(42u), cfg->seed != 0u ? cfg->seed : 1337u);
     RtsInputRouter input;
     rts_input_init(&input, (float)cfg->width, (float)cfg->height, false);
     RtsVoxelChunk voxel;
@@ -76,12 +77,27 @@ static int run_headless(const RtsAppConfig *cfg) {
     return rc;
 }
 
+static int run_fun_eval(const RtsAppConfig *cfg) {
+    RtsFeelConfig feel = cfg->fun_baseline ? rts_feel_config_baseline() : rts_feel_config_solaris();
+    int episodes = cfg->fun_episodes > 0 ? cfg->fun_episodes : 25;
+    uint64_t seed = cfg->seed != 0u ? cfg->seed : 42u;
+    RtsFunAuditReport rep;
+    if (!rts_fun_run_audit(&feel, seed, episodes, cfg->telemetry_out, 0.0, &rep)) {
+        fprintf(stderr, "[fun_eval] Audit failed\n");
+        return 1;
+    }
+    rts_fun_print_report(&rep, stdout);
+    return 0;
+}
+
 int main(int argc, char **argv) {
     RtsAppConfig cfg;
     memset(&cfg, 0, sizeof(cfg));
     cfg.data_dir = ".";
     cfg.width = 1280;
     cfg.height = 720;
+    cfg.seed = 42u;
+    cfg.fun_episodes = 25;
     cfg.min_lua_coverage = 95.0;
 
     for (int i = 1; i < argc; ++i) {
@@ -89,6 +105,16 @@ int main(int argc, char **argv) {
             cfg.headless = true;
         } else if (strcmp(argv[i], "--lua-coverage") == 0) {
             cfg.lua_coverage = true;
+        } else if (strcmp(argv[i], "--fun-eval") == 0) {
+            cfg.fun_eval = true;
+        } else if (strcmp(argv[i], "--baseline") == 0) {
+            cfg.fun_baseline = true;
+        } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
+            cfg.seed = (uint64_t)strtoull(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--episodes") == 0 && i + 1 < argc) {
+            cfg.fun_episodes = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--telemetry-out") == 0 && i + 1 < argc) {
+            cfg.telemetry_out = argv[++i];
         } else if (strcmp(argv[i], "--data-dir") == 0 && i + 1 < argc) {
             cfg.data_dir = argv[++i];
         } else if (strcmp(argv[i], "--test-script") == 0 && i + 1 < argc) {
@@ -97,6 +123,8 @@ int main(int argc, char **argv) {
             cfg.mod_to_mount = argv[++i];
         } else if (strcmp(argv[i], "--capture-screenshots") == 0 && i + 1 < argc) {
             cfg.screenshot_dir = argv[++i];
+        } else if (strcmp(argv[i], "--capture-fun-frames") == 0 && i + 1 < argc) {
+            cfg.fun_frames_dir = argv[++i];
         } else if (strcmp(argv[i], "--min-lua-coverage") == 0 && i + 1 < argc) {
             cfg.min_lua_coverage = atof(argv[++i]);
         } else if (strcmp(argv[i], "--width") == 0 && i + 1 < argc) {
@@ -106,8 +134,14 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (cfg.fun_eval) {
+        return run_fun_eval(&cfg);
+    }
     if (cfg.headless) {
         return run_headless(&cfg);
+    }
+    if (cfg.fun_frames_dir) {
+        return rts_platform_capture_fun_frames(&cfg);
     }
     if (cfg.screenshot_dir) {
         return rts_platform_capture_screenshots(&cfg);
