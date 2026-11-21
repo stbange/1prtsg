@@ -27,7 +27,8 @@ static void test_obj_and_png_io(void) {
 
     /* PNG write + reload from memory */
     uint8_t px[16] = {255,0,0,255, 0,255,0,255, 0,0,255,255, 255,255,255,255};
-    TEST_ASSERT_TRUE(rts_image_write_png("/tmp/rts_unit_test_px.png", 2, 2, 4, px));
+    TEST_ASSERT_TRUE(rts_image_write_png("rts_unit_test_px.png", 2, 2, 4, px));
+    remove("rts_unit_test_px.png");
     TEST_ASSERT_FALSE(rts_image_write_png(NULL, 2, 2, 4, px));
 
     RtsVfs vfs;
@@ -77,7 +78,7 @@ static void test_retro_renderer_all_scenes_on_null_backend(void) {
     }
     rts_renderer_render_live_world(&rr, &world, &input, 2.0f);
     rts_renderer_render_webxr_stereo(&rr, &world, &input, NULL, 2.5f);
-    TEST_ASSERT_TRUE(rts_renderer_capture_png(&rr, "/tmp/rts_null_shot.png"));
+    TEST_ASSERT_TRUE(rts_renderer_capture_png(&rr, "rts_null_shot.png"));
     TEST_ASSERT_FALSE(rts_renderer_capture_png(&rr, NULL));
 
     RtsGfxStats st = rr.gfx.get_stats(rr.gfx.state);

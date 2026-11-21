@@ -90,17 +90,17 @@ static void test_fun_eval_audit_baseline_vs_solaris(void) {
 
     RtsFunAuditReport rep_base, rep_sol;
     TEST_ASSERT_TRUE(rts_fun_run_audit(&base, 42u, 6, NULL, 7.2, &rep_base));
-    TEST_ASSERT_TRUE(rts_fun_run_audit(&solaris, 42u, 10, "/tmp/rts_unit_fun_telemetry.jsonl", 7.2, &rep_sol));
+    TEST_ASSERT_TRUE(rts_fun_run_audit(&solaris, 42u, 10, "rts_unit_fun_telemetry.jsonl", 7.2, &rep_sol));
 
     /* Verify JSONL telemetry file was emitted cleanly */
-    FILE *fp = fopen("/tmp/rts_unit_fun_telemetry.jsonl", "r");
+    FILE *fp = fopen("rts_unit_fun_telemetry.jsonl", "r");
     TEST_ASSERT_NOT_NULL(fp);
     char line[1024];
     TEST_ASSERT_NOT_NULL(fgets(line, sizeof(line), fp));
     TEST_ASSERT_NOT_NULL(strstr(line, "\"lifecycle\""));
     TEST_ASSERT_NOT_NULL(strstr(line, "\"juice\""));
     fclose(fp);
-    remove("/tmp/rts_unit_fun_telemetry.jsonl");
+    remove("rts_unit_fun_telemetry.jsonl");
 
     /* Report printing smoke test */
     FILE *sink = fopen("/dev/null", "w");

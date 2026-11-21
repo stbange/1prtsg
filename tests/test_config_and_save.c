@@ -105,15 +105,16 @@ static void test_deterministic_save_load_round_trip(void) {
     for (int i = 0; i < 10; ++i) rts_world_step(&w1, 0.1);
 
     /* Serialize to file and deserialize into fresh world + economy */
-    const char *save_path = "/tmp/1prtsg_test_snapshot.sav";
+    const char *save_path = "1prtsg_test_snapshot.sav";
     TEST_ASSERT_TRUE(rts_save_to_file(save_path, &w1, &e1));
     TEST_ASSERT_TRUE(rts_load_from_file(save_path, &w2, &e2));
+    remove(save_path);
 
     /* Reject malformed snapshots & tiny buffers */
     char tiny[16];
     TEST_ASSERT_EQUAL_UINT(0u, rts_save_serialize(&w1, &e1, tiny, sizeof(tiny)));
     TEST_ASSERT_FALSE(rts_save_deserialize("BAD_HEADER\n", &w2, &e2));
-    TEST_ASSERT_FALSE(rts_load_from_file("/tmp/nonexistent_1prtsg_xyz.sav", &w2, &e2));
+    TEST_ASSERT_FALSE(rts_load_from_file("nonexistent_1prtsg_xyz.sav", &w2, &e2));
 
     /* Step BOTH original and restored worlds 20 ticks -> MUST match deterministically! */
     for (int i = 0; i < 20; ++i) {
