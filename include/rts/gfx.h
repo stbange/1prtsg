@@ -121,6 +121,9 @@ typedef struct RtsMeshCacheEntry {
 struct RtsTacticalSim;
 struct RtsMegaInterior;
 struct RtsCrewDeckSim;
+struct RtsHoloGlobeState;
+struct RtsFieldGearState;
+struct RtsEconomySystem;
 
 typedef struct RtsRetroRenderer {
     RtsGfxBackend gfx;
@@ -169,6 +172,9 @@ typedef struct RtsRetroRenderer {
 
     const struct RtsMegaInterior *active_mega;
     const struct RtsCrewDeckSim *active_crew;
+    const struct RtsHoloGlobeState *active_holo;
+    const struct RtsFieldGearState *active_gear;
+    const struct RtsEconomySystem *active_eco;
 
     RtsVec3f cur_cam_pos;
     RtsVec4f cur_fog_color;
@@ -181,6 +187,8 @@ RtsGfxHandle rts_renderer_get_mesh(RtsRetroRenderer *rr, const char *rel_path);
 const RtsMeshCacheEntry *rts_renderer_get_mesh_entry(RtsRetroRenderer *rr, const char *rel_path);
 void rts_renderer_set_live_status(RtsRetroRenderer *rr, const char *mode_tag, const char *prompt, const char *toast);
 void rts_renderer_set_active_interior(RtsRetroRenderer *rr, const struct RtsMegaInterior *mega, const struct RtsCrewDeckSim *crew);
+void rts_renderer_set_rts_toolkit(RtsRetroRenderer *rr, const struct RtsHoloGlobeState *holo,
+                                  const struct RtsFieldGearState *gear, const struct RtsEconomySystem *eco);
 void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsShowcaseScene scene, float time_s);
 void rts_renderer_render_roster_class(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsConstructClass cls, float time_s);
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s);

@@ -20,6 +20,7 @@ void register_assets_and_renderer_tests(void);
 void register_fun_eval_tests(void);
 void register_lua_vm_tests(void);
 void register_mega_interiors_and_crew_tests(void);
+void register_rts_toolkit_tests(void);
 
 int main(void) {
     UNITY_BEGIN();
@@ -39,5 +40,6 @@ int main(void) {
     register_fun_eval_tests();
     register_lua_vm_tests();
     register_mega_interiors_and_crew_tests();
+    register_rts_toolkit_tests();
     return UNITY_END();
 }

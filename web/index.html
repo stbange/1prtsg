@@ -112,6 +112,9 @@
   <div id="toolbar">
     <button class="tb-btn accent" id="btn-tactical" title="Live Solaris Tactical Defense (Key L)">Tactical [L]</button>
     <button class="tb-btn accent" id="btn-sandbox" title="Seamless Planetary-to-Orbital Sandbox RTS & Explorable Mega-Interiors (Key M)">Sandbox RTS [M]</button>
+    <button class="tb-btn" id="btn-wrist" title="Toggle 4-Tab Diegetic Tactical Wrist-Pad (Key Tab)">Wrist-Pad [Tab]</button>
+    <button class="tb-btn" id="btn-optics" title="Cycle 1x/4x/12x Optical Binoculars & Laser Designator (Key Z)">Optics [Z]</button>
+    <button class="tb-btn" id="btn-radial" title="Open 7-Order Radial Quick Command Wheel (Key V / Right-Click)">Radial [V]</button>
     <button class="tb-btn" id="btn-ship" title="Cycle Explorable Megaships: Citadel 72rm -> Dropship -> Carrier 150rm -> Dreadnought 420rm -> Shipyard 420rm (Key N)">Next Ship [N]</button>
     <button class="tb-btn" id="btn-lift" title="Ride Turbolift Up One Deck (Keys [ and ])">Deck Lift []]</button>
     <button class="tb-btn" id="btn-alert" title="Toggle Red Alert: Engineer Damage Control & Marine vs Breacher Defense (Key F)">Red Alert [F]</button>
@@ -126,9 +129,9 @@
     <h3>1stPRTS COMMAND CONTROLS</h3>
     <div><kbd>Click Canvas</kbd> Lock Mouse 360&deg; Look (<kbd>Esc</kbd> unlocks) &nbsp;|&nbsp; <kbd>WASD</kbd> Walk / Pilot</div>
     <div><b>Tactical Defense (<kbd>L</kbd>):</b> <kbd>LMB</kbd>/<kbd>J</kbd> Plasma Lance · <kbd>Q</kbd> EMP Pulse (x2.4 Crit) · <kbd>Shift</kbd> Dash · <kbd>F</kbd> Fleet Strike · <kbd>H</kbd> Repair · <kbd>R</kbd> Retry</div>
-    <div><b>Explorable Mega-Interiors &amp; Sandbox RTS (<kbd>M</kbd>):</b> Walk seamlessly through 1–420 interconnected rooms &amp; 12-role staffed crew! <kbd>N</kbd> Cycle Megaships (Citadel 72rm, Carrier 150rm, Dreadnought 420rm, Shipyard 420rm) · <kbd>[</kbd>/<kbd>]</kbd> Ride Turbolift · <kbd>F</kbd> Red Alert (Engineers repair + Marines fight breachers) · <kbd>E</kbd> Holo-Globe / Console (<kbd>1-4</kbd> Orders) · <kbd>B</kbd> Board/Exit · <kbd>G</kbd> 400km LEO Orbit · <kbd>F5</kbd>/<kbd>F9</kbd> Save/Load</div>
-    <div><b>76-Unit 3D Catalog (<kbd>C</kbd>):</b> Cycle all 6 classes (76 unique sculpted Solaris .obj models)</div>
-    <div><b>Showcase Scenes:</b> Keys <kbd>1</kbd>–<kbd>9</kbd> &nbsp;|&nbsp; <b>Mobile:</b> Auto-switches to virtual touch controls</div>
+    <div><b>Tier 1/2/3 Interactive RTS Toolkit (<kbd>M</kbd>):</b> <kbd>Tab</kbd> 4-Tab Tactical Wrist-Pad (<kbd>1-4</kbd> Tabs) · <kbd>Z</kbd> 4x/12x Optical Binoculars &amp; Laser Designator (<kbd>LMB</kbd> Paint/Strike) · <kbd>V</kbd>/<kbd>RMB</kbd> 7-Order Radial Wheel · <kbd>E</kbd> 3D Holo-Globe (<kbd>1-7</kbd> Orders, <kbd>X</kbd> 3D Building Ghost, <kbd>Q</kbd>/<kbd>R</kbd> Zoom, <kbd>LMB</kbd> Pick/Confirm) or Facility Terminal (<kbd>1-6</kbd> 1:1 Gantry Assembly)</div>
+    <div><b>Explorable Mega-Interiors (1–420 Rooms):</b> <kbd>N</kbd> Cycle Megaships · <kbd>[</kbd>/<kbd>]</kbd> Ride Turbolift · <kbd>F</kbd> Red Alert · <kbd>B</kbd> Board/EVA · <kbd>G</kbd> 400km LEO Orbit · <kbd>F5</kbd>/<kbd>F9</kbd> Save/Load</div>
+    <div><b>76-Unit 3D Catalog (<kbd>C</kbd>):</b> Cycle all 6 classes &nbsp;|&nbsp; <b>Showcase:</b> Keys <kbd>1</kbd>–<kbd>9</kbd></div>
   </div>
 
   <div id="status">Initializing WebAssembly &amp; loose external manifest...</div>
@@ -200,6 +203,18 @@
     document.getElementById('btn-sandbox').addEventListener('click', (e) => {
       e.currentTarget.blur();
       sendSyntheticKey('m', 'KeyM', 77);
+    });
+    document.getElementById('btn-wrist').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('Tab', 'Tab', 9);
+    });
+    document.getElementById('btn-optics').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('z', 'KeyZ', 90);
+    });
+    document.getElementById('btn-radial').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('v', 'KeyV', 86);
     });
     document.getElementById('btn-ship').addEventListener('click', (e) => {
       e.currentTarget.blur();

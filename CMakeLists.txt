@@ -181,6 +181,8 @@ add_library(rts_core STATIC
     src/interior.c
     src/interior_gen.c
     src/crew_sim.c
+    src/hologlobe_ui.c
+    src/field_gear.c
     src/world.c
     src/voxel.c
     src/input.c
@@ -277,6 +279,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         tests/test_vfs.c
         tests/test_interior.c
         tests/test_mega_interiors_and_crew.c
+        tests/test_rts_toolkit.c
         tests/test_world.c
         tests/test_voxel.c
         tests/test_input.c

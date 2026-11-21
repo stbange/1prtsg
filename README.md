@@ -66,9 +66,28 @@ Every construct scales deterministically from a 1-room Starfighter cockpit to **
 
 ---
 
-## Complete Feature Matrix (Phases 1–4 + Solaris Art Direction + 76 Unique Models + 1–420 Room Mega-Interiors)
+## Interactive First-Person RTS Toolkit — Tier 1, Tier 2 & Tier 3 (`src/hologlobe_ui.c`, `src/field_gear.c`)
+
+Command your planetary and orbital war effort strictly from first-person through three seamless diegetic command tiers — with zero god-camera:
+
+- **Tier 3 — War Room 3D Planetary & Orbital Holo-Globe (`E` at Holo-Globe):** True 3D raycast unit picking (mouse/touch/WebXR ray) respecting spherical-horizon Fog of War, smooth planetary spin & zoom (`36,000 km` GEO down to `4 km` theater), drag/box selection, all 7 surface & orbital order modes (`[1] Select`, `[2] Move`, `[3] Attack`, `[4] Orbit`, `[5] Dock`, `[6] Re-entry`, `[7] Board`), and validated 3D holographic ghost placement (`[X]` + `LMB`) for all 24 Planetary Buildings & 10 Space Stations.
+- **Tier 1 — Personal Field Gear:** 4-Tab Diegetic **Tactical Wrist-Pad** (`Tab`: `1 Radar` obeying Fog of War + Comms Relay status, `2 Deck`, `3 Fleet`, `4 Economy & Queue`), **1x / 4x / 12x Optical Binoculars & 3D Laser Designator** (`Z` + `LMB` orbital/artillery strike call), and **7-Order Radial Quick Wheel** (`V` / Right-Click: `Escort`, `Move`, `Attack`, `Orbit`, `Dock`, `Board`, `Evacuate`).
+- **Tier 2 — Facility Production Terminals & 1:1 Progressive Gantry Assembly:** Walk up to any Foundry, Coastal Dock, Hangar, or Orbital Shipyard terminal (`E` -> `1-6`) to queue class-filtered units and watch active `RtsProductionJob`s assemble progressively at **1:1 scale** inside cyan wireframe scaffolds under 4 gantry pylons firing plasma welding arcs!
+
+| Tier 3: Interactive 3D Holo-Globe Raycast & Ghost Placement | Tier 1: 4-Tab Diegetic Tactical Wrist-Pad & Horizon Radar |
+| :---: | :---: |
+| ![Interactive 3D Holo-Globe](docs/screenshots/toolkit_01_hologlobe_raycast_placement.png) | ![Tactical Wrist-Pad Radar](docs/screenshots/toolkit_02_wristpad_tactical_radar.png) |
+
+| Tier 1: 4x/12x Optical Binoculars, 3D Laser Beacon & Radial Wheel | Tier 2: Foundry Build Terminal & 1:1 Progressive Gantry Assembly |
+| :---: | :---: |
+| ![Optics Laser Radial Wheel](docs/screenshots/toolkit_03_optics_laser_radial.png) | ![Foundry 1:1 Gantry Assembly](docs/screenshots/toolkit_04_factory_1to1_assembly.png) |
+
+---
+
+## Complete Feature Matrix (Phases 1–4 + Solaris Art Direction + 76 Unique Models + 1–420 Room Mega-Interiors + Tier 1/2/3 RTS Toolkit)
 
 - **Exclusively First-Person Commander & Hardcore Ironman (`src/world.c`, `src/controller.c`):** Zero god-camera. Walk seamlessly across interconnected rooms through open bulkhead doorways inside 1:1 multi-deck interiors, ride vertical **Turbolifts** across up to 20 decks, interact with physical War Room **3D Planetary & Orbital Holo-Globes**, Factory Terminals, Pilot Seats, and Bridge Helms, take direct manual piloting control of any construct (then hand back to AI crew), and survive Critical Reactor Meltdowns via physical **Escape Pod** evacuation.
+- **Full Interactive Tier 1/2/3 First-Person RTS Toolkit (`src/hologlobe_ui.c`, `src/field_gear.c`, `scripts/ui/diegetic_ui.lua`):** True 3D Holo-Globe raycast selection, box-selection, 7-mode surface/orbital orders & validated 3D base/station ghost placement; 4-Tab Diegetic Tactical Wrist-Pad (`Tab`); 1x/4x/12x Optical Binoculars & 3D Laser Strike Designator (`Z` + `LMB`); 7-Order Radial Quick Wheel (`V`/Right-Click); and Tier 2 Facility Build Consoles (`E` -> `1-6`) with live 1:1 progressive gantry welding assembly.
 - **Explorable 1–420 Room Mega-Interiors & Living 12-Role Crew (`src/interior_gen.c`, `src/crew_sim.c`):** Deterministic multi-deck floorplans for all **76 constructs** with 100% BFS-verified doorway connectivity, active-deck streaming, room-specific 3D props (Tokamak Reactor Cores, Shield Cores, Hangar Starfighters, Turbolift Shafts, Medbay Pods, Armory Lockers, illuminated corridor stripes), top-right **Diegetic Deck Blueprint Minimap**, and living 12-role staffed crew performing station work, corridor patrols, Engineer weld repairs, and Marine counter-boarding defense.
 - **True-Scale Spherical Planet & Real Orbital Mechanics (`src/planet.c`, `src/controller.c`):** 64-bit geocentric coordinates, 6-face cube-sphere terrain/oceans, local ENU surface frames, exponential atmosphere, aerobraking shielded re-entry heat flux, Velocity-Verlet orbital integration, Keplerian elements, Hohmann delta-v transfers, and automated Astrogator ascent/rendezvous/docking/re-entry.
 - **Doubled External Roster (`docs/ROSTER.md`, `scripts/units/`, `scripts/interiors/catalog.lua`, `scripts/crew/`):** **76 distinct enterable constructs** (24 Buildings · 10 Ground Vehicles · 10 Naval Ships · 8 Aircraft · 14 Spacecraft · 10 Space Stations), each with its own dedicated sculpted `.obj` model (`assets/models/<id>.obj`) and tailored multi-deck enterable interior + **12 crew/personnel roles** registered entirely from external MIT Lua 5.4 scripts.
@@ -93,7 +112,7 @@ Every construct scales deterministically from a 1-room Starfighter cockpit to **
 cmake --preset linux-coverage
 cmake --build --preset linux-coverage -j$(nproc)
 
-# Run C Unity unit tests, Lua unit tests (>= 95% Lua coverage), and 20 headless automated game tests
+# Run C Unity unit tests, Lua unit tests (>= 95% Lua coverage), and 22 headless automated game tests
 find build/linux-coverage -name '*.gcda' -delete
 ctest --preset linux-coverage --output-on-failure
 
@@ -107,12 +126,18 @@ python3 tools/check_coverage.py --build-dir build/linux-coverage --source-root .
 # Launch interactive SDL3 + OpenGL window:
 #   L = Live Solaris Tactical Defense | M = Seamless Sandbox RTS & Explorable Mega-Interiors
 #   WASD = Walk Rooms/Pilot | [/] = Turbolift Deck Up/Down | N = Cycle Megaships (72..420 Rooms)
-#   F = Red Alert (Crew Repair & Counter-Boarding) | E = Console/Holo-Globe [1-4 Orders] | B = Board/EVA | G = 400km Orbit
-#   F5/F9 = Quicksave/Quickload (RTS_SAVE_V1) | C = 76-Unit 3D Catalog | Keys 1-9 = Showcase Scenes
+#   Tab = 4-Tab Tactical Wrist-Pad [1-4 Tabs] | Z = 1x/4x/12x Optical Binoculars & Laser [LMB Strike]
+#   V / RMB = 7-Order Radial Quick Wheel [1-7] | E = Holo-Globe [1-7, X Ghost, Q/R Zoom] or Facility Terminal [1-6]
+#   F = Red Alert (Crew Repair & Counter-Boarding) | B = Board/EVA | G = 400km Orbit | F5/F9 = Quicksave/Quickload
+#   C = 76-Unit 3D Catalog | Keys 1-9 = Showcase Scenes
 ./build/linux-coverage/1prtsg --data-dir .
 
 # Launch with the external Emerald Vanguard mod mounted (zero recompilation!)
 ./build/linux-coverage/1prtsg --data-dir . --mod example_mod
+
+# Capture all 4 live OpenGL 3.3 Core Tier 1/2/3 Interactive RTS Toolkit screenshots
+LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1600x960x24" \
+  ./build/linux-coverage/1prtsg --data-dir . --width 1600 --height 960 --capture-rts-toolkit docs/screenshots
 
 # Capture all 4 live OpenGL 3.3 Core Explorable Mega-Interior & Living Crew screenshots
 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1600x960x24" \
@@ -146,7 +171,7 @@ python3 tools/generate_manifest.py
 | [`docs/ROSTER.md`](docs/ROSTER.md) | Complete Doubled Roster (76 Enterable Constructs + 12 Crew Roles) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Technical Architecture & Verification Blueprint |
 | [`docs/MODDING_GUIDE.md`](docs/MODDING_GUIDE.md) | Mod SDK, External Assets, Lua API Reference & Hot-Reload Guide |
-| [`openspec/specs/`](openspec/specs/) | Canonical Archived OpenSpec Specifications (12 capabilities across Phases 1–4) |
+| [`openspec/specs/`](openspec/specs/) | Canonical Archived OpenSpec Specifications (13 capabilities across Milestones 001–010) |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Cross-Platform CI (Linux Coverage/GL/ASan, Windows MSVC, macOS, Emscripten Web/WebXR) |
 
 ---

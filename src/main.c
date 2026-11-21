@@ -139,6 +139,8 @@ int main(int argc, char **argv) {
             cfg.roster_gallery_dir = argv[++i];
         } else if (strcmp(argv[i], "--capture-mega-interiors") == 0 && i + 1 < argc) {
             cfg.mega_interiors_dir = argv[++i];
+        } else if (strcmp(argv[i], "--capture-rts-toolkit") == 0 && i + 1 < argc) {
+            cfg.rts_toolkit_dir = argv[++i];
         } else if (strcmp(argv[i], "--capture-fun-frames") == 0 && i + 1 < argc) {
             cfg.fun_frames_dir = argv[++i];
         } else if (strcmp(argv[i], "--min-lua-coverage") == 0 && i + 1 < argc) {
@@ -155,6 +157,9 @@ int main(int argc, char **argv) {
     }
     if (cfg.headless) {
         return run_headless(&cfg);
+    }
+    if (cfg.rts_toolkit_dir) {
+        return rts_platform_capture_rts_toolkit(&cfg);
     }
     if (cfg.mega_interiors_dir) {
         return rts_platform_capture_mega_interiors(&cfg);

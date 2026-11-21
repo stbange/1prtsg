@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 #include "rts/crew.h"
+#include "rts/field_gear.h"
 #include "rts/fun_eval.h"
 #include "rts/gfx.h"
+#include "rts/hologlobe_ui.h"
 #include "rts/input.h"
 #include "rts/interior_gen.h"
 #include "rts/lua_vm.h"
@@ -12,6 +14,7 @@
 #include "rts/voxel.h"
 #include "rts/world.h"
 #include <SDL3/SDL.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,6 +44,8 @@ typedef struct InteractiveApp {
     RtsTacticalSim tactical;
     RtsMegaInterior mega;
     RtsCrewDeckSim crew;
+    RtsHoloGlobeState holo;
+    RtsFieldGearState gear;
     RtsRetroRenderer renderer;
     RtsLuaVm lua;
     RtsShowcaseScene scene;
@@ -202,6 +207,8 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
     rts_controller_init(&app->ctrl);
     rts_boarding_init(&app->boarding);
     rts_crew_init(&app->crew);
+    rts_hologlobe_init(&app->holo);
+    rts_field_gear_init(&app->gear);
     RtsFeelConfig feel = cfg->fun_baseline ? rts_feel_config_baseline() : rts_feel_config_solaris();
     rts_tactical_init(&app->tactical, &feel, seed, &app->audio);
 
@@ -209,6 +216,7 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
         fprintf(stderr, "[platform_sdl] Renderer init failed\n");
         return false;
     }
+    rts_renderer_set_rts_toolkit(&app->renderer, &app->holo, &app->gear, &app->economy);
     if (!rts_lua_init(&app->lua, &app->vfs, &app->world, &app->input, &app->voxel, &app->renderer)) {
         fprintf(stderr, "[platform_sdl] Lua VM init failed\n");
         return false;
@@ -226,7 +234,7 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
         app->world.commander.yaw_rad = 0.0;
         app->world.commander.pitch_rad = -0.05;
         rts_renderer_set_live_status(&app->renderer, "SEAMLESS SANDBOX RTS", "",
-                                     "WALK WAR ROOM [WASD] | [E] HOLO-GLOBE/BOARD | [G] ASTROGATOR 400KM ORBIT | [F5/F9] SAVE/LOAD");
+                                     "WALK WAR ROOM [WASD] | [TAB] WRIST-PAD | [Z] OPTICS | [V] RADIAL | [E] HOLO-GLOBE");
     }
     return true;
 }
@@ -304,33 +312,67 @@ static void sandbox_try_board_nearest(InteractiveApp *app) {
     }
 }
 
-static void sandbox_exec_hologlobe_order(InteractiveApp *app, int slot) {
-    if (slot == 1) {
-        uint32_t foundry = find_entity_by_blueprint(&app->world, "bldg_vehicle_foundry", 1u);
-        uint32_t job = rts_economy_queue_build(&app->economy, &app->world, foundry, "veh_plasma_tank");
-        if (job > 0u) {
-            rts_renderer_set_live_status(&app->renderer, "HOLO-GLOBE COMMAND", "",
-                                         "ORDER [1]: QUEUED PLASMA HEAVY TANK AT SOLARIS VEHICLE FOUNDRY!");
+static RtsRay sandbox_commander_ray(const InteractiveApp *app, bool world_space) {
+    double yaw = app->world.commander.yaw_rad;
+    double pitch = app->world.commander.pitch_rad;
+    RtsVec3d dir = rts_v3d_norm(rts_v3d(sin(yaw) * cos(pitch), sin(pitch), -cos(yaw) * cos(pitch)));
+    if (!world_space) {
+        return (RtsRay){app->world.commander.local_pos, dir};
+    }
+    RtsVec3d cam_w = rts_v3d(0.0, app->world.planet.radius_m, 0.0);
+    rts_interior_local_to_world(&app->world.interiors, app->world.commander.frame_id, app->world.commander.local_pos, &cam_w);
+    return (RtsRay){cam_w, dir};
+}
+
+static const RtsConsoleStation *sandbox_find_active_hologlobe(const InteractiveApp *app) {
+    for (size_t c = 0; c < app->world.interiors.console_count; ++c) {
+        const RtsConsoleStation *cs = &app->world.interiors.consoles[c];
+        if (cs->active && cs->frame_id == app->world.commander.frame_id && cs->type == RTS_CONSOLE_HOLO_GLOBE) {
+            return cs;
         }
-    } else if (slot == 2) {
-        uint32_t tank = find_entity_by_blueprint(&app->world, "veh_plasma_tank", 1u);
-        uint32_t enemy = find_entity_by_blueprint(&app->world, "veh_plasma_tank", 2u);
-        if (tank != 0u && enemy != 0u) {
-            rts_world_issue_order(&app->world, tank, RTS_ORDER_ATTACK, rts_v3d(0, 0, 0), enemy, 0.0);
-            rts_renderer_set_live_status(&app->renderer, "HOLO-GLOBE COMMAND", "",
-                                         "ORDER [2]: VANGUARD TANK 1 ENGAGING CRIMSON RAIDER 1!");
+    }
+    return NULL;
+}
+
+static void sandbox_hologlobe_update_hover(InteractiveApp *app) {
+    const RtsConsoleStation *hg_cs = sandbox_find_active_hologlobe(app);
+    if (!hg_cs) return;
+    RtsVec3d gcenter = rts_v3d(hg_cs->local_pos.x, hg_cs->local_pos.y + 0.55, hg_cs->local_pos.z);
+    RtsRay ray = sandbox_commander_ray(app, false);
+    if (rts_hologlobe_raycast(&app->holo, &app->world, 1u, ray, gcenter, 0.92)) {
+        if (app->holo.mode == RTS_HOLO_MODE_PLACE_BUILDING) {
+            rts_hologlobe_validate_placement(&app->holo, &app->world, &app->economy, 1u,
+                                             app->holo.place_blueprint_id, app->holo.hovered_world_pos);
         }
-    } else if (slot == 3) {
-        sandbox_trigger_astrogator(app);
-    } else if (slot == 4) {
-        uint32_t edread = find_entity_by_blueprint(&app->world, "space_siege_dreadnought", 2u);
-        if (edread != 0u) {
-            uint32_t op = rts_boarding_start(&app->boarding, &app->world, edread, 1u, 140u, true);
-            if (op > 0u) {
-                rts_renderer_set_live_status(&app->renderer, "ORBITAL BOARDING OPS", "",
-                                             "ORDER [4]: 140 SOLAR MARINES BREACHING CRIMSON SIEGE DREADNOUGHT AT 400KM LEO!");
-            }
+    }
+}
+
+static void sandbox_hologlobe_click(InteractiveApp *app, bool additive) {
+    sandbox_hologlobe_update_hover(app);
+    if (app->holo.mode == RTS_HOLO_MODE_PLACE_BUILDING) {
+        uint32_t id = rts_hologlobe_confirm_placement(&app->holo, &app->world, &app->economy, 1u,
+                                                      app->holo.place_blueprint_id, app->holo.ghost_world_pos);
+        if (id > 0u) {
+            rts_renderer_set_live_status(&app->renderer, "3D HOLO-GLOBE DEPLOYMENT", "", app->holo.last_feedback);
+        } else {
+            rts_renderer_set_live_status(&app->renderer, "3D PLACEMENT VALIDATION", "", app->holo.last_feedback);
         }
+        return;
+    }
+    if (app->holo.mode == RTS_HOLO_MODE_SELECT) {
+        if (app->holo.hovered_entity_id != 0u) {
+            rts_hologlobe_select_entity(&app->holo, app->holo.hovered_entity_id, additive);
+            const RtsEntity *e = rts_world_get_entity_const(&app->world, app->holo.hovered_entity_id);
+            snprintf(app->holo.last_feedback, sizeof(app->holo.last_feedback),
+                     "SELECTED %.44s (%zu TOTAL SELECTED)", e ? e->name : "UNIT", app->holo.selected_count);
+            rts_renderer_set_live_status(&app->renderer, "3D HOLO-GLOBE SELECT", "", app->holo.last_feedback);
+        }
+        return;
+    }
+    if (app->holo.hovered_valid) {
+        rts_hologlobe_issue_order(&app->holo, &app->world, &app->ctrl, &app->boarding, 1u,
+                                  app->holo.mode, app->holo.hovered_world_pos, app->holo.hovered_entity_id);
+        rts_renderer_set_live_status(&app->renderer, "3D HOLO-GLOBE COMMAND", "", app->holo.last_feedback);
     }
 }
 
@@ -362,6 +404,8 @@ static void interactive_tick(void *arg) {
                 app->renderer.height = nh;
                 rts_input_resize(&app->input, (float)nw, (float)nh);
             }
+        } else if (ev.type == SDL_EVENT_MOUSE_WHEEL && app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe) {
+            rts_hologlobe_zoom(&app->holo, (double)ev.wheel.y * 0.25);
         } else if (ev.type == SDL_EVENT_KEY_DOWN && !ev.key.repeat) {
             rts_input_notify_kbm_activity(&app->input);
 #ifndef __EMSCRIPTEN__
@@ -373,7 +417,7 @@ static void interactive_tick(void *arg) {
             if (ev.key.key == SDLK_M) {
                 app->view_mode = RTS_VIEW_SANDBOX_RTS;
                 rts_renderer_set_live_status(&app->renderer, "SEAMLESS SANDBOX RTS", "",
-                                             "WALK ROOMS [WASD] | [/] TURBOLIFT | [N] NEXT MEGASHIP | [F] RED ALERT | [E] CONSOLE | [G] ORBIT");
+                                             "[TAB] WRIST-PAD | [Z] OPTICS | [V] RADIAL | [E] HOLO-GLOBE/CONSOLE | [/] LIFT | [N] SHIP");
             }
             if (ev.key.key == SDLK_C) {
                 if (app->view_mode == RTS_VIEW_GALLERY) {
@@ -385,29 +429,70 @@ static void interactive_tick(void *arg) {
             }
             if (ev.key.key == SDLK_N) {
                 app->view_mode = RTS_VIEW_SANDBOX_RTS;
+                rts_facility_close(&app->gear);
                 sandbox_cycle_megaship(app);
             }
             if (ev.key.key == SDLK_LEFTBRACKET && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
-                sandbox_switch_deck(app, -1);
-            }
-            if (ev.key.key == SDLK_RIGHTBRACKET && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
-                sandbox_switch_deck(app, +1);
-            }
-            if (ev.key.key == SDLK_E) {
-                const RtsConsoleStation *near_c = (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->ctrl.mode == RTS_CMD_ON_FOOT)
-                    ? rts_interior_find_nearest_console(&app->world.interiors, app->world.commander.frame_id, app->world.commander.local_pos)
-                    : NULL;
-                if (near_c && near_c->type == RTS_CONSOLE_TURBOLIFT) {
-                    sandbox_switch_deck(app, +1);
+                if (app->gear.wrist_pad_open) {
+                    rts_field_gear_cycle_wrist_tab(&app->gear, -1);
                 } else {
-                    app->input.intent.interact_pressed = true;
+                    sandbox_switch_deck(app, -1);
                 }
             }
-            if (ev.key.key == SDLK_TAB) app->input.intent.toggle_pad_pressed = true;
+            if (ev.key.key == SDLK_RIGHTBRACKET && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
+                if (app->gear.wrist_pad_open) {
+                    rts_field_gear_cycle_wrist_tab(&app->gear, +1);
+                } else {
+                    sandbox_switch_deck(app, +1);
+                }
+            }
+            if (ev.key.key == SDLK_TAB) {
+                if (app->view_mode == RTS_VIEW_SANDBOX_RTS) {
+                    rts_field_gear_toggle_wrist_pad(&app->gear, &app->world);
+                    rts_renderer_set_live_status(&app->renderer, "TACTICAL WRIST-PAD", "", app->gear.last_status);
+                } else {
+                    app->input.intent.toggle_pad_pressed = true;
+                }
+            }
+            if (ev.key.key == SDLK_Z && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
+                rts_field_gear_cycle_optics(&app->gear);
+                rts_renderer_set_live_status(&app->renderer, "OPTICAL LASER DESIGNATOR", "", app->gear.last_status);
+            }
+            if (ev.key.key == SDLK_V && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
+                rts_field_gear_toggle_radial(&app->gear);
+                rts_renderer_set_live_status(&app->renderer, "RADIAL COMMAND WHEEL", "", app->gear.last_status);
+            }
+            if (ev.key.key == SDLK_X && app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe) {
+                rts_hologlobe_cycle_building(&app->holo, &app->world, +1);
+                sandbox_hologlobe_update_hover(app);
+                rts_renderer_set_live_status(&app->renderer, "3D BASE PLACEMENT", "", app->holo.last_feedback);
+            }
+            if (ev.key.key == SDLK_E) {
+                if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->gear.facility_open) {
+                    rts_facility_close(&app->gear);
+                    app->ctrl.mode = RTS_CMD_ON_FOOT;
+                    rts_renderer_set_live_status(&app->renderer, "FACILITY TERMINAL CLOSED", "", "STEPPED BACK FROM PRODUCTION CONSOLE.");
+                } else {
+                    const RtsConsoleStation *near_c = (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->ctrl.mode == RTS_CMD_ON_FOOT)
+                        ? rts_interior_find_nearest_console(&app->world.interiors, app->world.commander.frame_id, app->world.commander.local_pos)
+                        : NULL;
+                    if (near_c && near_c->type == RTS_CONSOLE_TURBOLIFT) {
+                        sandbox_switch_deck(app, +1);
+                    } else if (near_c && near_c->type == RTS_CONSOLE_FACTORY_TERMINAL) {
+                        if (rts_facility_open_for_entity(&app->gear, &app->world, near_c->owner_entity_id)) {
+                            app->ctrl.mode = RTS_CMD_AT_FACTORY;
+                            rts_renderer_set_live_status(&app->renderer, "TIER 2 PRODUCTION TERMINAL", "", app->gear.last_status);
+                        }
+                    } else {
+                        app->input.intent.interact_pressed = true;
+                    }
+                }
+            }
             if (ev.key.key == SDLK_G && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
                 sandbox_trigger_astrogator(app);
             }
             if (ev.key.key == SDLK_B && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
+                rts_facility_close(&app->gear);
                 sandbox_try_board_nearest(app);
             }
             if (ev.key.key == SDLK_F5) {
@@ -424,7 +509,13 @@ static void interactive_tick(void *arg) {
                                                 : "QUICKLOAD FAILED.");
             }
             if (ev.key.key == SDLK_J) tin.action_pressed[RTS_ACT_PLASMA_LANCE] = true;
-            if (ev.key.key == SDLK_Q) tin.action_pressed[RTS_ACT_EMP_PULSE] = true;
+            if (ev.key.key == SDLK_Q) {
+                if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe) {
+                    rts_hologlobe_zoom(&app->holo, -0.35);
+                } else {
+                    tin.action_pressed[RTS_ACT_EMP_PULSE] = true;
+                }
+            }
             if (ev.key.key == SDLK_LSHIFT || ev.key.key == SDLK_RSHIFT) tin.action_pressed[RTS_ACT_THRUSTER_DASH] = true;
             if (ev.key.key == SDLK_SPACE) tin.jump_pressed = true;
             if (ev.key.key == SDLK_F) {
@@ -440,31 +531,72 @@ static void interactive_tick(void *arg) {
                 }
             }
             if (ev.key.key == SDLK_H) tin.action_pressed[RTS_ACT_FIELD_REPAIR] = true;
-            if (ev.key.key == SDLK_R || ev.key.key == SDLK_RETURN) tin.retry_pressed = true;
+            if (ev.key.key == SDLK_R || ev.key.key == SDLK_RETURN) {
+                if (ev.key.key == SDLK_R && app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe) {
+                    rts_hologlobe_zoom(&app->holo, +0.35);
+                } else {
+                    tin.retry_pressed = true;
+                }
+            }
 
-            if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe) {
-                if (ev.key.key == SDLK_1) sandbox_exec_hologlobe_order(app, 1);
-                if (ev.key.key == SDLK_2) sandbox_exec_hologlobe_order(app, 2);
-                if (ev.key.key == SDLK_3) sandbox_exec_hologlobe_order(app, 3);
-                if (ev.key.key == SDLK_4) sandbox_exec_hologlobe_order(app, 4);
-            } else {
-                if (ev.key.key == SDLK_1) { app->view_mode = RTS_VIEW_SHOWCASE; app->scene = RTS_SCENE_WAR_ROOM_HOLOGLOBE; }
-                if (ev.key.key == SDLK_2) { app->view_mode = RTS_VIEW_SHOWCASE; app->scene = RTS_SCENE_PLANETARY_SURFACE; }
-                if (ev.key.key == SDLK_3) { app->view_mode = RTS_VIEW_SHOWCASE; app->scene = RTS_SCENE_DROPSHIP_INTERIOR; }
-                if (ev.key.key == SDLK_4) { app->view_mode = RTS_VIEW_SHOWCASE; app->scene = RTS_SCENE_ORBITAL_SHIPYARD; }
-                if (ev.key.key == SDLK_5) { app->view_mode = RTS_VIEW_SHOWCASE; app->scene = RTS_SCENE_MOBILE_TOUCH_HUD; }
-                if (ev.key.key == SDLK_6) { app->view_mode = RTS_VIEW_SHOWCASE; app->scene = RTS_SCENE_NAVAL_CARRIER_DECK; }
-                if (ev.key.key == SDLK_7) { app->view_mode = RTS_VIEW_SHOWCASE; app->scene = RTS_SCENE_FOUNDRY_INTERIOR; }
-                if (ev.key.key == SDLK_8) { app->view_mode = RTS_VIEW_SHOWCASE; app->scene = RTS_SCENE_DREADNOUGHT_BOARDING_REDALERT; }
-                if (ev.key.key == SDLK_9) { app->view_mode = RTS_VIEW_SHOWCASE; app->scene = RTS_SCENE_WEBXR_STEREO_HOLOGLOBE; }
+            /* Context-Aware Number Keys [1-9]: Radial Wheel -> Facility Console -> Tier 3 Holo-Globe -> Wrist-Pad -> Showcase */
+            int num = -1;
+            if (ev.key.key >= SDLK_1 && ev.key.key <= SDLK_9) num = (int)(ev.key.key - SDLK_1);
+            if (num >= 0) {
+                if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->gear.radial_open && num < RTS_RADIAL_COUNT) {
+                    RtsVec3d cw = rts_v3d(0.0, app->world.planet.radius_m, 0.0);
+                    rts_interior_local_to_world(&app->world.interiors, app->world.commander.frame_id, app->world.commander.local_pos, &cw);
+                    rts_field_gear_exec_radial(&app->gear, &app->world, &app->ctrl, &app->boarding, &app->holo, 1u, (RtsRadialOrder)num, cw);
+                    rts_renderer_set_live_status(&app->renderer, "RADIAL QUICK ORDER", "", app->gear.last_status);
+                } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->gear.facility_open && num < 6) {
+                    rts_facility_queue_index(&app->gear, &app->economy, &app->world, num);
+                    rts_renderer_set_live_status(&app->renderer, "1:1 GANTRY ASSEMBLY", "", app->gear.last_status);
+                } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe && num < 7) {
+                    static const RtsHoloOrderMode modes[7] = {
+                        RTS_HOLO_MODE_SELECT, RTS_HOLO_MODE_MOVE, RTS_HOLO_MODE_ATTACK,
+                        RTS_HOLO_MODE_ORBIT, RTS_HOLO_MODE_DOCK, RTS_HOLO_MODE_REENTRY, RTS_HOLO_MODE_BOARD
+                    };
+                    app->holo.mode = modes[num];
+                    snprintf(app->holo.last_feedback, sizeof(app->holo.last_feedback),
+                             "HOLO-GLOBE MODE: %s - AIM & CLICK LMB ON GLOBE", rts_hologlobe_mode_name(app->holo.mode));
+                    rts_renderer_set_live_status(&app->renderer, "3D HOLO-GLOBE", "", app->holo.last_feedback);
+                } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->gear.wrist_pad_open && num < RTS_WPAD_TAB_COUNT) {
+                    app->gear.wrist_tab = (RtsWristPadTab)num;
+                    rts_renderer_set_live_status(&app->renderer, "TACTICAL WRIST-PAD", "", rts_wrist_tab_name(app->gear.wrist_tab));
+                } else {
+                    app->view_mode = RTS_VIEW_SHOWCASE;
+                    app->scene = (RtsShowcaseScene)num;
+                }
             }
         } else if (ev.type == SDL_EVENT_MOUSE_MOTION) {
-            tin.aim_yaw += ev.motion.xrel * 0.0045f;
-            tin.aim_pitch = rts_clampf(tin.aim_pitch - ev.motion.yrel * 0.0045f, -1.1f, 1.1f);
-            app->input.intent.look_dx += ev.motion.xrel * 0.0045f;
-            app->input.intent.look_dy -= ev.motion.yrel * 0.0045f;
-        } else if (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN && ev.button.button == SDL_BUTTON_LEFT) {
-            tin.action_pressed[RTS_ACT_PLASMA_LANCE] = true;
+            if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe &&
+                (ev.motion.state & SDL_BUTTON_RMASK)) {
+                rts_hologlobe_orbit_drag(&app->holo, ev.motion.xrel * 0.008, ev.motion.yrel * 0.008);
+            } else {
+                tin.aim_yaw += ev.motion.xrel * 0.0045f;
+                tin.aim_pitch = rts_clampf(tin.aim_pitch - ev.motion.yrel * 0.0045f, -1.1f, 1.1f);
+                app->input.intent.look_dx += ev.motion.xrel * 0.0045f;
+                app->input.intent.look_dy -= ev.motion.yrel * 0.0045f;
+            }
+        } else if (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
+            if (ev.button.button == SDL_BUTTON_LEFT) {
+                if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe) {
+                    const bool *ks = SDL_GetKeyboardState(NULL);
+                    bool add = ks && (ks[SDL_SCANCODE_LSHIFT] || ks[SDL_SCANCODE_RSHIFT]);
+                    sandbox_hologlobe_click(app, add);
+                } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->gear.optics_level > 0) {
+                    RtsRay wray = sandbox_commander_ray(app, true);
+                    if (rts_field_gear_paint_target(&app->gear, &app->world, 1u, wray)) {
+                        rts_field_gear_designate_strike(&app->gear, &app->world, 1u);
+                        rts_renderer_set_live_status(&app->renderer, "LASER DESIGNATOR", "", app->gear.last_status);
+                    }
+                } else {
+                    tin.action_pressed[RTS_ACT_PLASMA_LANCE] = true;
+                }
+            } else if (ev.button.button == SDL_BUTTON_RIGHT && app->view_mode == RTS_VIEW_SANDBOX_RTS && !app->world.commander.at_holo_globe) {
+                rts_field_gear_toggle_radial(&app->gear);
+                rts_renderer_set_live_status(&app->renderer, "RADIAL COMMAND WHEEL", "", app->gear.last_status);
+            }
         } else if (ev.type == SDL_EVENT_FINGER_DOWN) {
             rts_input_on_touch_down(&app->input, (int64_t)ev.tfinger.fingerID, ev.tfinger.x, ev.tfinger.y);
         } else if (ev.type == SDL_EVENT_FINGER_MOTION) {
@@ -515,6 +647,9 @@ static void interactive_tick(void *arg) {
         rts_tactical_sync_to_world(&app->tactical, &app->world);
     } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS) {
         rts_controller_step(&app->ctrl, &app->world, &app->input.intent, 1.0 / 60.0);
+        if (app->world.commander.at_holo_globe) {
+            sandbox_hologlobe_update_hover(app);
+        }
         if (app->mega.total_rooms > 0u && app->world.commander.occupied_entity_id == app->mega.entity_id) {
             rts_crew_step(&app->crew, &app->mega, &app->world, 1.0 / 60.0);
         }
@@ -855,6 +990,117 @@ int rts_platform_capture_mega_interiors(const RtsAppConfig *cfg) {
            st.draw_calls, st.screenshots_saved, st.gl_errors);
     if (st.gl_errors != 0u) {
         fprintf(stderr, "[mega_interiors] FAIL: OpenGL reported %u errors\n", st.gl_errors);
+        rc = 1;
+    }
+
+    shutdown_engine_stack(app);
+    free(app);
+    return rc;
+}
+
+int rts_platform_capture_rts_toolkit(const RtsAppConfig *cfg) {
+    InteractiveApp *app = (InteractiveApp *)calloc(1, sizeof(InteractiveApp));
+    if (!app) return 1;
+
+    if (!init_sdl_gl(&app->window, &app->gl_ctx, cfg->width, cfg->height, false)) {
+        free(app);
+        return 1;
+    }
+    if (!init_engine_stack(app, cfg)) {
+        shutdown_engine_stack(app);
+        free(app);
+        return 1;
+    }
+
+    int rc = 0;
+
+    /* Shot 1: Tier 3 Interactive 3D Planetary & Orbital Holo-Globe with Raycast Selection, Order Arc & 3D Building Ghost */
+    uint32_t tank_id = find_entity_by_blueprint(&app->world, "veh_plasma_tank", 1u);
+    uint32_t enemy_id = find_entity_by_blueprint(&app->world, "veh_plasma_tank", 2u);
+    uint32_t ds_id = find_entity_by_blueprint(&app->world, "air_dropship", 1u);
+    if (tank_id != 0u && enemy_id != 0u) {
+        const RtsEntity *enemy = rts_world_get_entity_const(&app->world, enemy_id);
+        rts_hologlobe_select_entity(&app->holo, tank_id, false);
+        if (ds_id != 0u) rts_hologlobe_select_entity(&app->holo, ds_id, true);
+        if (enemy) {
+            rts_world_issue_order(&app->world, tank_id, RTS_ORDER_ATTACK, enemy->pos, enemy_id, 0.0);
+        }
+    }
+    app->holo.mode = RTS_HOLO_MODE_PLACE_BUILDING;
+    snprintf(app->holo.place_blueprint_id, sizeof(app->holo.place_blueprint_id), "bldg_plasma_turret");
+    rts_hologlobe_validate_placement(&app->holo, &app->world, &app->economy, 1u, "bldg_plasma_turret",
+                                     rts_v3d(-85.0, app->world.planet.radius_m, 45.0));
+    app->world.commander.at_holo_globe = true;
+    app->world.commander.local_pos.y = 2.02;
+    app->world.commander.yaw_rad = 0.0;
+    app->world.commander.pitch_rad = -0.06;
+    rts_renderer_set_live_status(&app->renderer, "TIER 3 INTERACTIVE 3D HOLO-GLOBE", "",
+                                 "LIVE 3D GLOBE: RAYCAST SELECTION HALOS, ATTACK TRAJECTORY, KEPLERIAN TRACKS & 3D BUILDING GHOST");
+    if (!save_live_interior_shot(app, cfg->rts_toolkit_dir, "toolkit_01_hologlobe_raycast_placement.png", 1.8f)) rc = 1;
+
+    /* Shot 2: Tier 1 Diegetic 4-Tab Tactical Wrist-Pad (Spherical-Horizon Fog-of-War Radar + Comms Link) */
+    app->world.commander.at_holo_globe = false;
+    app->world.commander.frame_id = app->world.planet_frame_id;
+    app->world.commander.occupied_entity_id = 0u;
+    app->world.commander.local_pos = rts_v3d(42.0, app->world.planet.radius_m + 3.2, -16.0);
+    app->world.commander.yaw_rad = -0.78;
+    app->world.commander.pitch_rad = -0.04;
+    rts_renderer_set_active_interior(&app->renderer, NULL, NULL);
+    app->gear.wrist_pad_open = true;
+    app->gear.wrist_tab = RTS_WPAD_RADAR;
+    rts_renderer_set_live_status(&app->renderer, "TIER 1 DIEGETIC TACTICAL WRIST-PAD", "",
+                                 "4-TAB WRIST-PAD [TAB]: SPHERICAL-HORIZON FOG-OF-WAR RADAR, COMMS RELAY STATUS, FLEET ROSTER & ECONOMY");
+    if (!save_live_interior_shot(app, cfg->rts_toolkit_dir, "toolkit_02_wristpad_tactical_radar.png", 2.9f)) rc = 1;
+
+    /* Shot 3: Tier 1 Optical Binoculars (4x Zoom) + 3D Laser Designator Beacon + 7-Order Radial Quick Wheel */
+    app->gear.wrist_pad_open = false;
+    app->gear.optics_level = 1; /* 4x optical zoom (20 deg FOV) */
+    const RtsEntity *raider = rts_world_get_entity_const(&app->world, enemy_id);
+    if (raider) {
+        app->world.commander.local_pos = rts_v3d(raider->pos.x - 105.0, app->world.planet.radius_m + 4.5, raider->pos.z + 24.0);
+        RtsVec3d to_r = rts_v3d_sub(raider->pos, app->world.commander.local_pos);
+        app->world.commander.yaw_rad = atan2(to_r.x, -to_r.z);
+        app->world.commander.pitch_rad = -0.02;
+        RtsRay lray = {app->world.commander.local_pos, rts_v3d_norm(to_r)};
+        rts_field_gear_paint_target(&app->gear, &app->world, 1u, lray);
+        rts_field_gear_designate_strike(&app->gear, &app->world, 1u);
+    }
+    app->gear.radial_open = true;
+    app->gear.radial_hovered = RTS_RADIAL_ATTACK;
+    rts_renderer_set_live_status(&app->renderer, "TIER 1 OPTICS 4X & RADIAL WHEEL", "",
+                                 "OPTICAL BINOCULARS [Z] PAINTING 3D LASER TARGET ON CRIMSON RAIDER 1 + 7-ORDER RADIAL QUICK WHEEL [V]");
+    if (!save_live_interior_shot(app, cfg->rts_toolkit_dir, "toolkit_03_optics_laser_radial.png", 4.1f)) rc = 1;
+
+    /* Shot 4: Tier 2 Interactive Foundry Build Terminal + Live 1:1 Progressive Gantry Assembly */
+    app->gear.optics_level = 0;
+    app->gear.radial_open = false;
+    app->gear.paint_active = false;
+    uint32_t foundry_id = find_entity_by_blueprint(&app->world, "bldg_vehicle_foundry", 1u);
+    const RtsEntity *foundry = rts_world_get_entity_const(&app->world, foundry_id);
+    if (foundry) {
+        rts_facility_open_for_entity(&app->gear, &app->world, foundry_id);
+        uint32_t jid = rts_facility_queue_index(&app->gear, &app->economy, &app->world, 0);
+        if (jid > 0u) {
+            /* Advance build to ~62% completion (3.1s of 5.0s) so rising solid tank hull + holographic scaffold + golden weld beams shine */
+            for (int t = 0; t < 93; ++t) {
+                rts_economy_step(&app->economy, &app->world, 1.0 / 30.0);
+            }
+        }
+        RtsVec3d gantry = rts_v3d(foundry->pos.x + 28.0, foundry->pos.y + 1.8, foundry->pos.z + 32.0);
+        app->world.commander.local_pos = rts_v3d(gantry.x + 14.0, foundry->pos.y + 4.8, gantry.z + 18.0);
+        RtsVec3d look = rts_v3d_sub(gantry, app->world.commander.local_pos);
+        app->world.commander.yaw_rad = atan2(look.x, -look.z);
+        app->world.commander.pitch_rad = -0.10;
+    }
+    rts_renderer_set_live_status(&app->renderer, "TIER 2 FOUNDRY 1:1 GANTRY ASSEMBLY", "",
+                                 "SOLARIS VEHICLE FOUNDRY TERMINAL [E]: PLASMA HEAVY TANK ASSEMBLING PROGRESSIVELY AT 1:1 SCALE!");
+    if (!save_live_interior_shot(app, cfg->rts_toolkit_dir, "toolkit_04_factory_1to1_assembly.png", 5.3f)) rc = 1;
+
+    RtsGfxStats st = app->renderer.gfx.get_stats(app->renderer.gfx.state);
+    printf("[rts_toolkit] OpenGL draw calls: %u, screenshots: %u, gl_errors: %u\n",
+           st.draw_calls, st.screenshots_saved, st.gl_errors);
+    if (st.gl_errors != 0u) {
+        fprintf(stderr, "[rts_toolkit] FAIL: OpenGL reported %u errors\n", st.gl_errors);
         rc = 1;
     }
 

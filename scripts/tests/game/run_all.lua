@@ -169,4 +169,21 @@ for i = 1, #registry.all do
 end
 expect(max_mega_rooms == 420, "Scenario 20: Capital mega-constructs must reach 420 explorable rooms")
 
-print("[Automated Game Tests] ALL 20 END-TO-END SCENARIOS PASSED!")
+-- Scenario 21: Tier 3 Interactive 3D Holo-Globe Raycast Picking, Fog-of-War Contact Filtering & 3D Base Placement
+local picked_tank, picked_ok = engine.rts.hologlobe_pick(ACTIVE_MISSION.tank, 1)
+expect(picked_ok and picked_tank == ACTIVE_MISSION.tank, "Scenario 21: 3D Holo-Globe failed to raycast-pick friendly Plasma Tank")
+local far_hidden = engine.world.spawn("veh_plasma_tank", "Far Hidden Raider", 2, 0, -6371000, 0, false)
+local picked_hidden, _ = engine.rts.hologlobe_pick(far_hidden, 1)
+expect(picked_hidden ~= far_hidden, "Scenario 21: Horizon-occluded enemy must not be pickable on 3D Holo-Globe")
+local deployed_bldg, dep_ok, _ = engine.rts.hologlobe_place("bldg_plasma_turret", 1, -155, 6371000, 110)
+expect(dep_ok and deployed_bldg > 0, "Scenario 21: 3D Holo-Globe dynamic base building placement failed")
+
+-- Scenario 22: Tier 1 Optical Laser Designator & Tier 2 Facility 1:1 Production Rollout
+local painted_id, tasked_units = engine.rts.designate(1, ACTIVE_MISSION.enemy_tank)
+expect(painted_id == ACTIVE_MISSION.enemy_tank and tasked_units >= 1, "Scenario 22: Optical Laser Designator failed to paint & task squad")
+local fjob, fcnt = engine.rts.facility_queue(ACTIVE_MISSION.foundry, 0)
+expect(fjob > 0 and fcnt == 10, "Scenario 22: Tier 2 Foundry console failed to queue 1:1 gantry production")
+expect(eco.advance_production(1.0, 20) >= 1, "Scenario 22: 1:1 Foundry gantry production failed to complete")
+expect(eco.get_spawned_unit(fjob) > 0, "Scenario 22: Completed 1:1 gantry construct failed to roll out")
+
+print("[Automated Game Tests] ALL 22 END-TO-END SCENARIOS PASSED!")

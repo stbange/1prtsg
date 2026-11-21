@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: MIT */
+#include "rts/field_gear.h"
+#include "rts/hologlobe_ui.h"
 #include "rts/interior_gen.h"
 #include "rts/lua_vm.h"
 #include "lauxlib.h"
@@ -780,6 +782,95 @@ static int l_save_restore(lua_State *L) {
     return 1;
 }
 
+static int l_rts_hologlobe_pick(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t eid = (uint32_t)luaL_checkinteger(L, 1);
+    uint8_t fac = (uint8_t)luaL_optinteger(L, 2, 1);
+    const RtsEntity *e = rts_world_get_entity_const(vm->world, eid);
+    if (!e) {
+        lua_pushinteger(L, 0);
+        lua_pushboolean(L, 0);
+        return 2;
+    }
+    RtsHoloGlobeState hg;
+    rts_hologlobe_init(&hg);
+    RtsVec3d center = rts_v3d(0.0, 1.65, -4.0);
+    double radius = 0.92;
+    RtsVec3d bp = rts_hologlobe_world_to_globe(&hg, &vm->world->planet, e->pos, center, radius);
+    RtsVec3d origin = rts_v3d(bp.x, bp.y, bp.z + 2.5);
+    RtsRay ray = {origin, rts_v3d(0.0, 0.0, -1.0)};
+    bool hit = rts_hologlobe_raycast(&hg, vm->world, fac, ray, center, radius);
+    lua_pushinteger(L, (lua_Integer)hg.hovered_entity_id);
+    lua_pushboolean(L, hit ? 1 : 0);
+    return 2;
+}
+
+static int l_rts_hologlobe_place(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    const char *bp_id = luaL_checkstring(L, 1);
+    uint8_t fac = (uint8_t)luaL_checkinteger(L, 2);
+    double x = luaL_checknumber(L, 3);
+    double y = luaL_checknumber(L, 4);
+    double z = luaL_checknumber(L, 5);
+    RtsHoloGlobeState hg;
+    rts_hologlobe_init(&hg);
+    uint32_t id = rts_hologlobe_confirm_placement(&hg, vm->world, vm->economy, fac, bp_id, rts_v3d(x, y, z));
+    lua_pushinteger(L, (lua_Integer)id);
+    lua_pushboolean(L, hg.ghost_valid ? 1 : 0);
+    lua_pushstring(L, hg.ghost_reason);
+    return 3;
+}
+
+static int l_rts_designate(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint8_t fac = (uint8_t)luaL_checkinteger(L, 1);
+    uint32_t target_id = (uint32_t)luaL_checkinteger(L, 2);
+    const RtsEntity *tgt = rts_world_get_entity_const(vm->world, target_id);
+    if (!tgt) {
+        lua_pushinteger(L, 0);
+        lua_pushinteger(L, 0);
+        return 2;
+    }
+    RtsFieldGearState *fg = (RtsFieldGearState *)calloc(1, sizeof(RtsFieldGearState));
+    if (!fg) {
+        lua_pushinteger(L, 0);
+        lua_pushinteger(L, 0);
+        return 2;
+    }
+    rts_field_gear_init(fg);
+    RtsVec3d orig = rts_v3d(tgt->pos.x, tgt->pos.y + 45.0, tgt->pos.z + 35.0);
+    RtsRay ray = {orig, rts_v3d_norm(rts_v3d_sub(tgt->pos, orig))};
+    rts_field_gear_paint_target(fg, vm->world, fac, ray);
+    size_t tasked = rts_field_gear_designate_strike(fg, vm->world, fac);
+    lua_pushinteger(L, (lua_Integer)fg->painted_entity_id);
+    lua_pushinteger(L, (lua_Integer)tasked);
+    free(fg);
+    return 2;
+}
+
+static int l_rts_facility_queue(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t fac_id = (uint32_t)luaL_checkinteger(L, 1);
+    int slot = (int)luaL_optinteger(L, 2, 0);
+    RtsFieldGearState *fg = (RtsFieldGearState *)calloc(1, sizeof(RtsFieldGearState));
+    if (!fg) {
+        lua_pushinteger(L, 0);
+        lua_pushinteger(L, 0);
+        return 2;
+    }
+    rts_field_gear_init(fg);
+    uint32_t jid = 0u;
+    size_t cnt = 0u;
+    if (rts_facility_open_for_entity(fg, vm->world, fac_id)) {
+        cnt = fg->facility_item_count;
+        jid = rts_facility_queue_index(fg, vm->economy, vm->world, slot);
+    }
+    free(fg);
+    lua_pushinteger(L, (lua_Integer)jid);
+    lua_pushinteger(L, (lua_Integer)cnt);
+    return 2;
+}
+
 static void register_subtable(lua_State *L, const char *name, const luaL_Reg *funcs) {
     lua_newtable(L);
     luaL_setfuncs(L, funcs, 0);
@@ -930,6 +1021,13 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
         {"restore", l_save_restore},
         {NULL, NULL}
     };
+    static const luaL_Reg rts_funcs[] = {
+        {"hologlobe_pick", l_rts_hologlobe_pick},
+        {"hologlobe_place", l_rts_hologlobe_place},
+        {"designate", l_rts_designate},
+        {"facility_queue", l_rts_facility_queue},
+        {NULL, NULL}
+    };
 
     register_subtable(L, "vfs", vfs_funcs);
     register_subtable(L, "planet", planet_funcs);
@@ -945,6 +1043,7 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
     register_subtable(L, "boarding", board_funcs);
     register_subtable(L, "config", config_funcs);
     register_subtable(L, "save", save_funcs);
+    register_subtable(L, "rts", rts_funcs);
     lua_setglobal(L, "engine");
     return true;
 }

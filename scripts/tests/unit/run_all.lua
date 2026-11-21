@@ -103,6 +103,22 @@ check(sk.queued_job > 0 and sk.attack_issued, "Skirmish AI should queue producti
 
 check(ui.format_page_header(1, true) == "TACTICAL_GLOBE [LINKED]", "Wrist-Pad header linked format")
 check(ui.format_page_header(99, false) == "TACTICAL_GLOBE [RELAY_LOST]", "Wrist-Pad fallback offline format")
+check(ui.optics_label(1) == "VISOR 1X", "Optics 1x label")
+check(ui.optics_label(2) == "OPTICS 4X [LASER DESIGNATOR]", "Optics 4x label")
+check(ui.radial_label(3) == "ATTACK", "Radial slot 3 label")
+
+local pk_id, pk_ok = engine.rts.hologlobe_pick(ACTIVE_MISSION.tank, 1)
+check(pk_ok and pk_id == ACTIVE_MISSION.tank, "3D Holo-Globe raycast must pick friendly Plasma Tank")
+local pk0, pk0_ok = engine.rts.hologlobe_pick(99999, 1)
+check(pk0 == 0 and not pk0_ok, "Invalid entity pick must return 0, false")
+local pl_id, pl_ok, _ = engine.rts.hologlobe_place("bldg_solar_geothermal", 1, -180, 6371000, 120)
+check(pl_ok and pl_id > 0, "3D Holo-Globe building placement must spawn solar array")
+local dg_id, dg_n = engine.rts.designate(1, ACTIVE_MISSION.enemy_tank)
+check(dg_id == ACTIVE_MISSION.enemy_tank and dg_n >= 1, "Laser designator must paint enemy and task friendly squad")
+local dg0, dg0n = engine.rts.designate(1, 99999)
+check(dg0 == 0 and dg0n == 0, "Invalid designate target must return 0, 0")
+local fj_id, fj_cnt = engine.rts.facility_queue(ACTIVE_MISSION.foundry, 0)
+check(fj_id > 0 and fj_cnt == 10, "Tier 2 Foundry console must expose 10 vehicles and queue production")
 
 local bad_asc, _ = astro.launch_to_orbit(ACTIVE_MISSION.tank, 400000)
 check(not bad_asc, "Non-orbital tank must fail orbital ascent")

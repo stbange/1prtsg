@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 #include "rts/crew.h"
+#include "rts/field_gear.h"
 #include "rts/gfx.h"
+#include "rts/hologlobe_ui.h"
 #include "rts/interior_gen.h"
 #include "rts/tactical_sim.h"
 #include <math.h>
@@ -286,6 +288,14 @@ void rts_renderer_set_active_interior(RtsRetroRenderer *rr, const RtsMegaInterio
     if (!rr) return;
     rr->active_mega = mega;
     rr->active_crew = crew;
+}
+
+void rts_renderer_set_rts_toolkit(RtsRetroRenderer *rr, const RtsHoloGlobeState *holo,
+                                  const RtsFieldGearState *gear, const RtsEconomySystem *eco) {
+    if (!rr) return;
+    rr->active_holo = holo;
+    rr->active_gear = gear;
+    rr->active_eco = eco;
 }
 
 static void draw_mesh(RtsRetroRenderer *rr, RtsGfxHandle sh, RtsGfxHandle mesh, RtsGfxHandle tex,
@@ -1494,10 +1504,355 @@ static void draw_deck_blueprint_minimap(RtsRetroRenderer *rr, RtsMat4f ortho, co
     hud_text(rr, ortho, mx + 10.0f, my + mh - 18.0f, 1.0f, (RtsVec4f){0.82f, 0.92f, 1.0f, 1.0f}, "[/] LIFT | N SHIP | F ALERT");
 }
 
+static void draw_hologlobe_3d_projections(RtsRetroRenderer *rr, RtsMat4f vp, const RtsWorld *world,
+                                          RtsFrameId fid, RtsVec3d globe_center_local, RtsVec3d cam_world,
+                                          RtsVec3f light, float time_s) {
+    if (!rr->active_holo) return;
+    const RtsHoloGlobeState *hg = rr->active_holo;
+    RtsQuatd idq = rts_quat_identity();
+
+    /* Outer Keplerian GEO Orbital Track Ring */
+    RtsVec3d gc_w;
+    rts_interior_local_to_world(&world->interiors, fid, globe_center_local, &gc_w);
+    RtsVec3f gc_rel = rts_v3d_relative_f(gc_w, cam_world);
+    draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+              rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.18 + hg->pitch_rad * 0.25), gc_rel, (RtsVec3f){1.56f, 1.56f, 1.56f}),
+              (RtsVec4f){0.36f, 0.92f, 1.0f, 0.72f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+
+    /* Project Every Friendly Construct & Fog-of-War Detected Hostile Onto Spinning 3D Holo-Globe */
+    for (size_t i = 0; i < world->entity_count; ++i) {
+        const RtsEntity *e = &world->entities[i];
+        if (!e->active) continue;
+        if (e->faction_id != 1u && !rts_sensors_is_target_detected(world, 1u, e->id)) continue;
+
+        RtsVec3d bp_local = rts_hologlobe_world_to_globe(hg, &world->planet, e->pos, globe_center_local, 0.92);
+        RtsVec3d bp_w;
+        rts_interior_local_to_world(&world->interiors, fid, bp_local, &bp_w);
+        RtsVec3f bp_rel = rts_v3d_relative_f(bp_w, cam_world);
+
+        bool sel = rts_hologlobe_is_selected(hg, e->id);
+        bool hov = (hg->hovered_entity_id == e->id);
+        RtsVec4f col = (e->faction_id == 2u) ? (RtsVec4f){1.0f, 0.28f, 0.44f, 0.98f}
+                     : (sel ? (RtsVec4f){1.0f, 0.88f, 0.30f, 1.0f} : (RtsVec4f){0.24f, 0.96f, 1.0f, 0.96f});
+        float bsz = (sel || hov) ? 0.065f : 0.046f;
+        draw_mesh(rr, rr->sh_holo, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(idq, bp_rel, (RtsVec3f){bsz, bsz, bsz}),
+                  col, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+
+        if (sel || hov) {
+            RtsQuatd hq = rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 1.8);
+            draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                      rts_mat4_from_quat_trs(hq, bp_rel, (RtsVec3f){0.13f, 0.13f, 0.13f}),
+                      (RtsVec4f){1.0f, 0.86f, 0.28f, 1.0f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+        }
+
+        /* Active Order Trajectory Arc on the 3D Holo-Globe */
+        if (e->faction_id == 1u && (e->order_type == RTS_ORDER_MOVE || e->order_type == RTS_ORDER_ATTACK)) {
+            RtsVec3d tp_local = rts_hologlobe_world_to_globe(hg, &world->planet, e->order_target_pos, globe_center_local, 0.92);
+            RtsVec3d tp_w;
+            rts_interior_local_to_world(&world->interiors, fid, tp_local, &tp_w);
+            RtsVec4f acol = (e->order_type == RTS_ORDER_ATTACK) ? (RtsVec4f){1.0f, 0.36f, 0.42f, 0.95f} : (RtsVec4f){0.32f, 0.98f, 0.86f, 0.95f};
+            draw_plasma_beam(rr, vp, bp_rel, rts_v3d_relative_f(tp_w, cam_world), 0.014f, acol, time_s);
+        }
+    }
+
+    /* Live 3D Holographic Building / Station Placement Ghost on the Spinning Holo-Globe */
+    if (hg->mode == RTS_HOLO_MODE_PLACE_BUILDING && hg->place_blueprint_id[0] != '\0') {
+        RtsVec3d gp_local = rts_hologlobe_world_to_globe(hg, &world->planet, hg->ghost_world_pos, globe_center_local, 0.92);
+        RtsVec3d gp_w;
+        rts_interior_local_to_world(&world->interiors, fid, gp_local, &gp_w);
+        RtsVec3f gp_rel = rts_v3d_relative_f(gp_w, cam_world);
+        RtsVec4f gcol = hg->ghost_valid ? (RtsVec4f){0.28f, 1.0f, 0.72f, 0.92f} : (RtsVec4f){1.0f, 0.28f, 0.40f, 0.92f};
+
+        const RtsConstructBlueprint *gbp = rts_world_find_blueprint(world, hg->place_blueprint_id);
+        const RtsMeshCacheEntry *gme = gbp ? rts_renderer_get_mesh_entry(rr, gbp->mesh_path) : NULL;
+        RtsGfxHandle gmesh = gme ? gme->handle : rr->mesh_citadel;
+        float gsc = gme ? (0.14f / fmaxf(0.25f, gme->bounds_radius)) : 0.12f;
+        draw_mesh(rr, rr->sh_holo, gmesh, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 1.2), gp_rel, (RtsVec3f){gsc, gsc, gsc}),
+                  gcol, light, time_s, true, true, false, true, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(idq, gp_rel, (RtsVec3f){0.19f, 0.19f, 0.19f}),
+                  gcol, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+    }
+}
+
+static void draw_live_gantry_assemblies(RtsRetroRenderer *rr, RtsMat4f vp, const RtsWorld *world,
+                                        RtsVec3d cam_world, RtsVec3f light, float time_s) {
+    if (!rr->active_eco) return;
+    RtsQuatd idq = rts_quat_identity();
+
+    for (size_t i = 0; i < rr->active_eco->job_count; ++i) {
+        const RtsProductionJob *job = &rr->active_eco->jobs[i];
+        if (!job->active || job->completed) continue;
+        const RtsEntity *prod = rts_world_get_entity_const(world, job->producer_entity_id);
+        const RtsConstructBlueprint *bp = rts_world_find_blueprint(world, job->blueprint_id);
+        if (!prod || !bp) continue;
+
+        /* Position 1:1 Assembly Gantry visibly on the producer's sunlit fabrication apron */
+        RtsVec3d gantry_w = rts_v3d(prod->pos.x + 28.0, prod->pos.y, prod->pos.z + 32.0);
+        RtsVec3f grel = rts_v3d_relative_f(gantry_w, cam_world);
+        if (grel.x * grel.x + grel.y * grel.y + grel.z * grel.z > 2400.0f * 2400.0f) continue;
+
+        float prog = (job->total_time_s > 0.01)
+            ? rts_clampf((float)(1.0 - job->remaining_s / job->total_time_s), 0.12f, 0.99f) : 0.5f;
+
+        /* Illuminated Gantry Fabrication Platform & Calibration Ring */
+        draw_box(rr, vp, (RtsVec3f){grel.x, grel.y - 0.18f, grel.z}, (RtsVec3f){14.0f, 0.36f, 14.0f}, idq,
+                 rr->tex_deck_floor, (RtsVec4f){0.62f, 0.86f, 1.0f, 1.0f}, light, time_s);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 0.6), (RtsVec3f){grel.x, grel.y + 0.15f, grel.z}, (RtsVec3f){6.8f, 6.8f, 6.8f}),
+                  (RtsVec4f){0.26f, 0.96f, 1.0f, 0.92f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+
+        /* 4 Corner Gantry Pylons Firing Golden Plasma Weld Arcs Onto Rising 1:1 Hull */
+        const RtsMeshCacheEntry *me = rts_renderer_get_mesh_entry(rr, bp->mesh_path);
+        RtsGfxHandle mesh = me ? me->handle : rr->mesh_tank;
+        float sc = me ? rts_clampf((fmaxf(bp->dimensions_m.x, bp->dimensions_m.z) * 0.42f) / me->bounds_radius, 2.2f, 8.5f) : 3.4f;
+        RtsQuatd mrot = rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 0.45);
+
+        /* Full-Scale Cyan Wireframe Holographic Blueprint Scaffold */
+        draw_mesh(rr, rr->sh_holo, mesh, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(mrot, (RtsVec3f){grel.x, grel.y + 1.2f, grel.z}, (RtsVec3f){sc * 1.04f, sc * 1.04f, sc * 1.04f}),
+                  (RtsVec4f){0.22f, 0.96f, 1.0f, 0.88f}, light, time_s, true, true, false, true, RTS_DRAW_TRIANGLES);
+
+        /* Rising Solid Sculpted .OBJ Hull Scaling Progressively With Build Progress */
+        draw_mesh(rr, rr->sh_mesh, mesh, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(mrot, (RtsVec3f){grel.x, grel.y + 1.2f * prog, grel.z}, (RtsVec3f){sc, sc * prog, sc}),
+                  (RtsVec4f){1.0f, 0.98f, 0.94f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+        static const float p_off[4][2] = {{-5.6f, -5.6f}, {5.6f, -5.6f}, {-5.6f, 5.6f}, {5.6f, 5.6f}};
+        for (int p = 0; p < 4; ++p) {
+            RtsVec3f base_p = {grel.x + p_off[p][0], grel.y + 3.2f, grel.z + p_off[p][1]};
+            draw_box(rr, vp, base_p, (RtsVec3f){0.65f, 6.4f, 0.65f}, idq, rr->tex_hull_blue, (RtsVec4f){0.82f, 0.88f, 0.98f, 1.0f}, light, time_s);
+            RtsVec3f tip = {base_p.x, grel.y + 5.6f, base_p.z};
+            RtsVec3f weld = {grel.x + sinf(time_s * 2.4f + (float)p) * 1.2f, grel.y + 1.0f + prog * 2.2f, grel.z + cosf(time_s * 2.1f + (float)p) * 1.2f};
+            draw_plasma_beam(rr, vp, tip, weld, 0.08f, (RtsVec4f){1.0f, 0.82f, 0.28f, 0.96f}, time_s);
+        }
+    }
+}
+
+static void draw_wrist_pad_hud(RtsRetroRenderer *rr, RtsMat4f ortho, const RtsWorld *world, RtsVec3d cam_world) {
+    if (!rr->active_gear || !rr->active_gear->wrist_pad_open) return;
+    const RtsFieldGearState *fg = rr->active_gear;
+    float px = 18.0f, py = 74.0f, pw = 420.0f, ph = 336.0f;
+
+    hud_border_box(rr, ortho, px, py, pw, ph,
+                   (RtsVec4f){0.02f, 0.06f, 0.13f, 0.92f}, (RtsVec4f){0.26f, 0.94f, 1.0f, 0.96f});
+
+    /* Header + Comms Relay Link Status */
+    RtsRadarContact contacts[RTS_RADAR_MAX_CONTACTS];
+    bool comms_ok = true;
+    uint32_t hq_id = (world->entity_count > 0u) ? world->entities[0].id : 0u;
+    size_t ccnt = rts_field_gear_scan_radar(world, 1u, hq_id, cam_world, 450.0, contacts, RTS_RADAR_MAX_CONTACTS, &comms_ok);
+
+    hud_text(rr, ortho, px + 12.0f, py + 10.0f, 1.0f, (RtsVec4f){1.0f, 0.86f, 0.34f, 1.0f}, "TACTICAL WRIST-PAD [TAB]");
+    hud_text(rr, ortho, px + 266.0f, py + 10.0f, 1.0f,
+             comms_ok ? (RtsVec4f){0.32f, 1.0f, 0.72f, 1.0f} : (RtsVec4f){1.0f, 0.32f, 0.42f, 1.0f},
+             comms_ok ? "COMMS: LINKED" : "RELAY LOST");
+
+    /* 4 Interactive Diegetic Tabs */
+    static const char *const tab_lbl[4] = {"1 RADAR", "2 DECK", "3 FLEET", "4 ECO"};
+    for (int t = 0; t < 4; ++t) {
+        float tx = px + 10.0f + (float)t * 100.0f;
+        bool active = ((int)fg->wrist_tab == t);
+        hud_border_box(rr, ortho, tx, py + 28.0f, 94.0f, 22.0f,
+                       active ? (RtsVec4f){0.10f, 0.30f, 0.48f, 0.96f} : (RtsVec4f){0.04f, 0.10f, 0.20f, 0.90f},
+                       active ? (RtsVec4f){1.0f, 0.86f, 0.32f, 1.0f} : (RtsVec4f){0.26f, 0.68f, 0.88f, 0.75f});
+        hud_text(rr, ortho, tx + 8.0f, py + 35.0f, 1.0f,
+                 active ? (RtsVec4f){1.0f, 0.96f, 0.62f, 1.0f} : (RtsVec4f){0.76f, 0.90f, 1.0f, 1.0f}, tab_lbl[t]);
+    }
+
+    float cy = py + 62.0f;
+    if (fg->wrist_tab == RTS_WPAD_RADAR) {
+        float rx = px + 14.0f, ry = cy, rw = 216.0f, rh = 216.0f;
+        hud_border_box(rr, ortho, rx, ry, rw, rh, (RtsVec4f){0.01f, 0.04f, 0.09f, 0.96f}, (RtsVec4f){0.22f, 0.86f, 0.96f, 0.88f});
+        hud_quad(rr, ortho, rx + rw * 0.5f, ry, 1.0f, rh, (RtsVec4f){0.18f, 0.50f, 0.66f, 0.45f});
+        hud_quad(rr, ortho, rx, ry + rh * 0.5f, rw, 1.0f, (RtsVec4f){0.18f, 0.50f, 0.66f, 0.45f});
+        for (size_t i = 0; i < ccnt; ++i) {
+            float bx = rx + rw * 0.5f + contacts[i].rel_x_norm * (rw * 0.44f);
+            float by = ry + rh * 0.5f + contacts[i].rel_z_norm * (rh * 0.44f);
+            RtsVec4f bc = (contacts[i].faction_id == 2u) ? (RtsVec4f){1.0f, 0.28f, 0.42f, 1.0f}
+                        : (contacts[i].orbital ? (RtsVec4f){1.0f, 0.84f, 0.30f, 1.0f} : (RtsVec4f){0.28f, 0.98f, 1.0f, 1.0f});
+            hud_quad(rr, ortho, bx - 4.0f, by - 4.0f, 8.0f, 8.0f, bc);
+        }
+        hud_quad(rr, ortho, rx + rw * 0.5f - 3.0f, ry + rh * 0.5f - 3.0f, 6.0f, 6.0f, (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f});
+
+        /* Right-column live Fog-of-War Contact Legend */
+        hud_text(rr, ortho, rx + rw + 12.0f, ry + 4.0f, 1.0f, (RtsVec4f){1.0f, 0.86f, 0.36f, 1.0f}, "HORIZON CONTACTS");
+        size_t shown = ccnt < 10u ? ccnt : 10u;
+        for (size_t i = 0; i < shown; ++i) {
+            char line[32];
+            upper_trunc_copy(line, sizeof(line), contacts[i].label, 20);
+            RtsVec4f lc = (contacts[i].faction_id == 2u) ? (RtsVec4f){1.0f, 0.42f, 0.52f, 1.0f} : (RtsVec4f){0.78f, 0.96f, 1.0f, 1.0f};
+            hud_text(rr, ortho, rx + rw + 12.0f, ry + 24.0f + (float)i * 18.0f, 1.0f, lc, line);
+        }
+    } else if (fg->wrist_tab == RTS_WPAD_DECK_MAP) {
+        char buf[96];
+        if (rr->active_mega && rr->active_mega->total_rooms > 0u) {
+            snprintf(buf, sizeof(buf), "VESSEL DECK %u / %u (%u ROOMS)",
+                     (unsigned)(rr->active_mega->active_deck + 1u), (unsigned)rr->active_mega->deck_count,
+                     (unsigned)rr->active_mega->total_rooms);
+        } else {
+            snprintf(buf, sizeof(buf), "SURFACE EVA - NO INTERIOR ACTIVE");
+        }
+        hud_text(rr, ortho, px + 14.0f, cy + 8.0f, 1.0f, (RtsVec4f){1.0f, 0.86f, 0.36f, 1.0f}, buf);
+        snprintf(buf, sizeof(buf), "LIVE STAFF: %zu | REPAIRS: %u | BREACHERS: %u",
+                 rr->active_crew ? rr->active_crew->count : 0u,
+                 rr->active_crew ? (unsigned)rr->active_crew->repairs_completed : 0u,
+                 rr->active_crew ? (unsigned)rr->active_crew->breachers_neutralized : 0u);
+        hud_text(rr, ortho, px + 14.0f, cy + 32.0f, 1.0f, (RtsVec4f){0.34f, 0.98f, 0.90f, 1.0f}, buf);
+        hud_text(rr, ortho, px + 14.0f, cy + 60.0f, 1.0f, (RtsVec4f){0.86f, 0.94f, 1.0f, 1.0f}, "USE [/] FOR TURBOLIFT OR N FOR NEXT SHIP");
+    } else if (fg->wrist_tab == RTS_WPAD_FLEET_ROSTER) {
+        hud_text(rr, ortho, px + 14.0f, cy + 4.0f, 1.0f, (RtsVec4f){1.0f, 0.86f, 0.36f, 1.0f}, "ACTIVE SOLARIS FLEET ROSTER");
+        int row = 0;
+        for (size_t i = 0; i < world->entity_count && row < 11; ++i) {
+            const RtsEntity *e = &world->entities[i];
+            if (!e->active || e->faction_id != 1u) continue;
+            char row_txt[72];
+            int hp_pct = e->max_hull > 0.0f ? (int)(100.0f * e->hull / e->max_hull) : 100;
+            snprintf(row_txt, sizeof(row_txt), "%.24s | HP:%3d%% | %s", e->name, hp_pct, e->orbital_mode ? "LEO" : "SRF");
+            char up[64];
+            upper_trunc_copy(up, sizeof(up), row_txt, 48);
+            hud_text(rr, ortho, px + 14.0f, cy + 26.0f + (float)row * 20.0f, 1.0f, (RtsVec4f){0.84f, 0.96f, 1.0f, 1.0f}, up);
+            row++;
+        }
+    } else {
+        char buf[96];
+        double ore = rr->active_eco ? rr->active_eco->ledgers[1].ore : world->resources_ore;
+        double fuel = rr->active_eco ? rr->active_eco->ledgers[1].fuel : world->resources_fuel;
+        snprintf(buf, sizeof(buf), "ORE: %.0f | FUEL: %.0f | PWR: +%.0fMW", ore, fuel, world->resources_power);
+        hud_text(rr, ortho, px + 14.0f, cy + 8.0f, 1.0f, (RtsVec4f){1.0f, 0.86f, 0.36f, 1.0f}, buf);
+        hud_text(rr, ortho, px + 14.0f, cy + 32.0f, 1.0f, (RtsVec4f){0.34f, 0.98f, 0.92f, 1.0f}, "ACTIVE 1:1 GANTRY PRODUCTION QUEUE:");
+        int row = 0;
+        if (rr->active_eco) {
+            for (size_t i = 0; i < rr->active_eco->job_count && row < 6; ++i) {
+                const RtsProductionJob *jb = &rr->active_eco->jobs[i];
+                if (!jb->active || jb->completed) continue;
+                float pr = jb->total_time_s > 0.01 ? rts_clampf((float)(1.0 - jb->remaining_s / jb->total_time_s), 0.0f, 1.0f) : 1.0f;
+                char jt[64];
+                snprintf(jt, sizeof(jt), "#%u %.22s %3d%%", jb->id, jb->blueprint_id, (int)(pr * 100.0f));
+                char up[64];
+                upper_trunc_copy(up, sizeof(up), jt, 44);
+                float ry = cy + 58.0f + (float)row * 34.0f;
+                hud_text(rr, ortho, px + 14.0f, ry, 1.0f, (RtsVec4f){0.94f, 0.98f, 1.0f, 1.0f}, up);
+                hud_border_box(rr, ortho, px + 14.0f, ry + 14.0f, pw - 28.0f, 10.0f,
+                               (RtsVec4f){0.04f, 0.10f, 0.18f, 0.95f}, (RtsVec4f){0.26f, 0.92f, 1.0f, 0.88f});
+                hud_quad(rr, ortho, px + 16.0f, ry + 16.0f, (pw - 32.0f) * pr, 6.0f, (RtsVec4f){1.0f, 0.84f, 0.30f, 1.0f});
+                row++;
+            }
+        }
+        if (row == 0) {
+            hud_text(rr, ortho, px + 14.0f, cy + 60.0f, 1.0f, (RtsVec4f){0.74f, 0.86f, 0.98f, 1.0f}, "NO ACTIVE JOBS - ACCESS FOUNDRY TERMINAL [E]");
+        }
+    }
+
+    hud_text(rr, ortho, px + 14.0f, py + ph - 18.0f, 1.0f, (RtsVec4f){0.78f, 0.90f, 1.0f, 1.0f}, "KEYS 1-4: SWITCH TAB | TAB: CLOSE WRIST-PAD");
+}
+
+static void draw_optics_hud(RtsRetroRenderer *rr, RtsMat4f ortho) {
+    if (!rr->active_gear || rr->active_gear->optics_level <= 0) return;
+    const RtsFieldGearState *fg = rr->active_gear;
+    float w = (float)rr->width, h = (float)rr->height;
+    float cx = w * 0.5f, cy = h * 0.5f;
+
+    /* Sleek Optical Binoculars Framing Aperture Bars & Cyan Mil-Dot Rangefinder Reticle */
+    hud_quad(rr, ortho, 0.0f, 64.0f, w, 24.0f, (RtsVec4f){0.01f, 0.03f, 0.07f, 0.80f});
+    hud_quad(rr, ortho, 0.0f, h - 86.0f, w, 24.0f, (RtsVec4f){0.01f, 0.03f, 0.07f, 0.80f});
+    hud_border_box(rr, ortho, cx - 220.0f, cy - 150.0f, 440.0f, 300.0f,
+                   (RtsVec4f){0.0f, 0.0f, 0.0f, 0.0f}, (RtsVec4f){0.24f, 0.94f, 1.0f, 0.82f});
+
+    /* Center Precision Crosshair + Mil-Dot Ticks */
+    hud_quad(rr, ortho, cx - 90.0f, cy - 1.0f, 68.0f, 2.0f, (RtsVec4f){0.28f, 0.98f, 1.0f, 0.92f});
+    hud_quad(rr, ortho, cx + 22.0f, cy - 1.0f, 68.0f, 2.0f, (RtsVec4f){0.28f, 0.98f, 1.0f, 0.92f});
+    hud_quad(rr, ortho, cx - 1.0f, cy - 72.0f, 2.0f, 50.0f, (RtsVec4f){0.28f, 0.98f, 1.0f, 0.92f});
+    hud_quad(rr, ortho, cx - 1.0f, cy + 22.0f, 2.0f, 50.0f, (RtsVec4f){0.28f, 0.98f, 1.0f, 0.92f});
+    hud_quad(rr, ortho, cx - 3.0f, cy - 3.0f, 6.0f, 6.0f, fg->paint_active ? (RtsVec4f){1.0f, 0.34f, 0.42f, 1.0f} : (RtsVec4f){1.0f, 0.88f, 0.30f, 1.0f});
+
+    char opt_hdr[96];
+    snprintf(opt_hdr, sizeof(opt_hdr), "OPTICAL BINOCULARS %dX | FOV %.1f DEG | LASER DESIGNATOR READY",
+             rts_field_gear_optics_zoom_x(fg), rts_field_gear_fov_deg(fg));
+    hud_text(rr, ortho, cx - 220.0f, 70.0f, 1.0f, (RtsVec4f){0.36f, 0.98f, 1.0f, 1.0f}, opt_hdr);
+
+    if (fg->paint_active) {
+        char ptxt[96];
+        snprintf(ptxt, sizeof(ptxt), "LASER PAINTED: %.48s | [LMB] CALL STRIKE", fg->painted_label);
+        char pup[88];
+        upper_trunc_copy(pup, sizeof(pup), ptxt, 74);
+        hud_text(rr, ortho, cx - 220.0f, h - 80.0f, 1.0f, (RtsVec4f){1.0f, 0.86f, 0.30f, 1.0f}, pup);
+    }
+}
+
+static void draw_radial_wheel_hud(RtsRetroRenderer *rr, RtsMat4f ortho) {
+    if (!rr->active_gear || !rr->active_gear->radial_open) return;
+    const RtsFieldGearState *fg = rr->active_gear;
+    float cx = (float)rr->width * 0.5f;
+    float cy = (float)rr->height * 0.5f;
+    float rad_x = 278.0f, rad_y = 205.0f;
+
+    /* Place banner above radial ring so center target & optical reticle remain 100% unobstructed */
+    hud_border_box(rr, ortho, cx - 122.0f, cy - rad_y - 54.0f, 244.0f, 26.0f,
+                   (RtsVec4f){0.03f, 0.08f, 0.16f, 0.94f}, (RtsVec4f){1.0f, 0.84f, 0.30f, 0.98f});
+    hud_text(rr, ortho, cx - 108.0f, cy - rad_y - 46.0f, 1.0f, (RtsVec4f){1.0f, 0.88f, 0.36f, 1.0f}, "RADIAL QUICK ORDERS [1-7]");
+
+    for (int i = 0; i < RTS_RADIAL_COUNT; ++i) {
+        double ang = -RTS_PI * 0.5 + (2.0 * RTS_PI * (double)i) / (double)RTS_RADIAL_COUNT;
+        float bx = cx + (float)cos(ang) * rad_x - 78.0f;
+        float by = cy + (float)sin(ang) * rad_y - 16.0f;
+        bool hi = ((int)fg->radial_hovered == i);
+        hud_border_box(rr, ortho, bx, by, 156.0f, 32.0f,
+                       hi ? (RtsVec4f){0.14f, 0.32f, 0.50f, 0.96f} : (RtsVec4f){0.03f, 0.07f, 0.15f, 0.92f},
+                       hi ? (RtsVec4f){1.0f, 0.86f, 0.30f, 1.0f} : (RtsVec4f){0.26f, 0.90f, 1.0f, 0.90f});
+        char lbl[32];
+        snprintf(lbl, sizeof(lbl), "[%d] %s", i + 1, rts_radial_order_name((RtsRadialOrder)i));
+        hud_text(rr, ortho, bx + 10.0f, by + 10.0f, 1.0f,
+                 hi ? (RtsVec4f){1.0f, 0.96f, 0.52f, 1.0f} : (RtsVec4f){0.92f, 0.98f, 1.0f, 1.0f}, lbl);
+    }
+}
+
+static void draw_facility_console_hud(RtsRetroRenderer *rr, RtsMat4f ortho, const RtsWorld *world) {
+    if (!rr->active_gear || !rr->active_gear->facility_open) return;
+    const RtsFieldGearState *fg = rr->active_gear;
+    float w = (float)rr->width, h = (float)rr->height;
+    float bw = 940.0f, bh = 128.0f;
+    float bx = w * 0.5f - bw * 0.5f, by = h - 188.0f;
+
+    hud_border_box(rr, ortho, bx, by, bw, bh,
+                   (RtsVec4f){0.02f, 0.07f, 0.15f, 0.94f}, (RtsVec4f){1.0f, 0.82f, 0.30f, 0.98f});
+
+    char hdr[128];
+    snprintf(hdr, sizeof(hdr), "TIER 2 PRODUCTION TERMINAL: %.38s [PRESS 1-6 TO QUEUE | E EXIT]", fg->facility_name);
+    char hdr_up[128];
+    upper_trunc_copy(hdr_up, sizeof(hdr_up), hdr, 108);
+    hud_text(rr, ortho, bx + 14.0f, by + 10.0f, 1.0f, (RtsVec4f){1.0f, 0.86f, 0.34f, 1.0f}, hdr_up);
+
+    size_t show = fg->facility_item_count < 6u ? fg->facility_item_count : 6u;
+    for (size_t i = 0; i < show; ++i) {
+        const RtsConstructBlueprint *bp = rts_world_find_blueprint(world, fg->facility_items[i]);
+        double ore = 0.0, fuel = 0.0, bs = 0.0;
+        if (bp) rts_economy_blueprint_cost(bp, &ore, &fuel, &bs);
+        int col = (int)(i % 3u), row = (int)(i / 3u);
+        float ix = bx + 14.0f + (float)col * 306.0f;
+        float iy = by + 32.0f + (float)row * 42.0f;
+        bool sel = ((int)i == fg->facility_selected_idx);
+        hud_border_box(rr, ortho, ix, iy, 298.0f, 36.0f,
+                       sel ? (RtsVec4f){0.10f, 0.28f, 0.44f, 0.95f} : (RtsVec4f){0.04f, 0.10f, 0.20f, 0.90f},
+                       sel ? (RtsVec4f){1.0f, 0.86f, 0.32f, 1.0f} : (RtsVec4f){0.24f, 0.88f, 1.0f, 0.84f});
+        char item_txt[64];
+        snprintf(item_txt, sizeof(item_txt), "[%u] %.28s", (unsigned)(i + 1u), bp ? bp->name : fg->facility_items[i]);
+        char iup[48];
+        upper_trunc_copy(iup, sizeof(iup), item_txt, 33);
+        hud_text(rr, ortho, ix + 8.0f, iy + 6.0f, 1.0f, (RtsVec4f){0.96f, 0.98f, 1.0f, 1.0f}, iup);
+        char cost_txt[48];
+        snprintf(cost_txt, sizeof(cost_txt), "%.0f ORE | %.0f FUEL | %.0fS", ore, fuel, bs);
+        hud_text(rr, ortho, ix + 8.0f, iy + 21.0f, 1.0f, (RtsVec4f){0.36f, 0.98f, 0.90f, 1.0f}, cost_txt);
+    }
+}
+
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s) {
     if (!rr || !rr->initialized || !world) return;
     float aspect = (float)rr->width / (float)(rr->height > 0 ? rr->height : 1);
-    RtsMat4f proj = rts_mat4_perspective((float)(62.0 * RTS_DEG2RAD), aspect, 0.2f, 3500.0f);
+    float fov_deg = rr->active_gear ? rts_field_gear_fov_deg(rr->active_gear) : 62.0f;
+    RtsMat4f proj = rts_mat4_perspective((float)((double)fov_deg * RTS_DEG2RAD), aspect, 0.2f, 3500.0f);
     RtsVec3f sun = {0.62f, 0.36f, -0.70f};
     RtsVec3f light = {0.58f, 0.78f, 0.38f};
     RtsQuatd idq = rts_quat_identity();
@@ -1595,7 +1950,6 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
             /* Doorway-pierced bulkheads (only drawn on mega-rooms with door_mask or non-generic kind) */
             if (rm->kind != RTS_ROOM_GENERIC || rm->door_mask != 0u) {
                 bool pano = (rm->kind == RTS_ROOM_WAR_ROOM || rm->kind == RTS_ROOM_BRIDGE_CIC || rm->kind == RTS_ROOM_HANGAR);
-                /* Draw North & West walls for every cell, plus outer South/East walls on perimeter to avoid Z-fighting */
                 draw_room_edge_wall(rr, vp, world, rm->frame_id, frot, cam_world,
                                     rts_v3d(cx, rm->local_bounds.min.y, rm->local_bounds.min.z),
                                     (float)rw, true, (rm->door_mask & RTS_DOOR_N) != 0u, pano, wall_tint, light, time_s);
@@ -1625,7 +1979,10 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
             RtsVec3f crel = rts_v3d_relative_f(cw, cam_world);
 
             if (cs->type == RTS_CONSOLE_HOLO_GLOBE) {
-                RtsQuatd spin = rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 0.45);
+                double hyaw = rr->active_holo ? rr->active_holo->yaw_rad : (double)(time_s * 0.45f);
+                double hpitch = rr->active_holo ? rr->active_holo->pitch_rad : 0.0;
+                RtsQuatd spin = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), hyaw),
+                                             rts_quat_from_axis_angle(rts_v3d(1, 0, 0), hpitch));
                 draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_hull_blue, vp,
                           rts_mat4_from_quat_trs(frot, (RtsVec3f){crel.x, crel.y - 0.85f, crel.z}, (RtsVec3f){1.65f, 0.45f, 1.65f}),
                           (RtsVec4f){0.42f, 0.56f, 0.76f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
@@ -1638,6 +1995,10 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
                 draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
                           rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.36), (RtsVec3f){crel.x, crel.y + 0.55f, crel.z}, (RtsVec3f){1.42f, 1.42f, 1.42f}),
                           (RtsVec4f){1.0f, 0.84f, 0.30f, 0.96f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+
+                /* Live Interactive Tier 3 Holo-Globe Blips, Selection Halos, Order Arcs & Placement Ghost */
+                RtsVec3d gcenter_local = rts_v3d(cs->local_pos.x, cs->local_pos.y + 0.55, cs->local_pos.z);
+                draw_hologlobe_3d_projections(rr, vp, world, cs->frame_id, gcenter_local, cam_world, light, time_s);
             } else {
                 RtsVec4f glow = (cs->type == RTS_CONSOLE_ESCAPE_POD) ? (RtsVec4f){0.28f, 1.0f, 0.74f, 1.0f}
                               : ((cs->type == RTS_CONSOLE_TURBOLIFT) ? (RtsVec4f){1.0f, 0.84f, 0.30f, 1.0f}
@@ -1664,7 +2025,6 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
                           rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), a->yaw_rad), arel, (RtsVec3f){1.06f, 1.06f, 1.06f}),
                           ctint, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
 
-                /* Engineer Weld-Arc (within 3.8m of target core) / Marine Counter-Boarding Fire (within 7.0m) */
                 double tdist = rts_v3d_dist(a->local_pos, a->target_pos);
                 if ((a->state == RTS_CREW_REPAIRING && tdist < 3.8) || (a->state == RTS_CREW_COMBAT && tdist < 7.0)) {
                     RtsVec3d tw;
@@ -1707,13 +2067,30 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
         draw_mesh(rr, rr->sh_mesh, mesh, tex, vp, model, (RtsVec4f){1, 1, 1, 1}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
     }
 
-    /* Seamless Sandbox RTS HUD: Location/Room/Altitude + Resources + Diegetic Deck Blueprint Minimap + Holo-Globe Bar */
+    /* Tier 2 Live 1:1 Progressive Gantry Assembly for Active Production Jobs */
+    draw_live_gantry_assemblies(rr, vp, world, cam_world, light, time_s);
+
+    /* Tier 1b Live 3D Laser Designator Beacon Spire in World Space */
+    if (rr->active_gear && rr->active_gear->paint_active) {
+        RtsVec3f lrel = rts_v3d_relative_f(rr->active_gear->painted_world_pos, cam_world);
+        draw_plasma_beam(rr, vp, (RtsVec3f){lrel.x, lrel.y, lrel.z}, (RtsVec3f){lrel.x, lrel.y + 42.0f, lrel.z},
+                         0.28f, (RtsVec4f){1.0f, 0.38f, 0.32f, 0.96f}, time_s);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 2.2), (RtsVec3f){lrel.x, lrel.y + 1.4f, lrel.z}, (RtsVec3f){5.2f, 5.2f, 5.2f}),
+                  (RtsVec4f){1.0f, 0.84f, 0.28f, 0.98f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+    }
+
+    /* Seamless Sandbox RTS HUD: Minimap + Tier 1/2/3 Diegetic Toolkit Overlays */
     float w = (float)rr->width, h = (float)rr->height;
     RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
 
     if (inside_construct) {
         draw_deck_blueprint_minimap(rr, ortho, world, world->commander.frame_id);
     }
+    draw_wrist_pad_hud(rr, ortho, world, cam_world);
+    draw_optics_hud(rr, ortho);
+    draw_radial_wheel_hud(rr, ortho);
+    draw_facility_console_hud(rr, ortho, world);
 
     const RtsEntity *occ = rts_world_get_entity_const(world, world->commander.occupied_entity_id);
     const RtsInteriorRoom *room = rts_interior_find_room_at(&world->interiors, world->commander.frame_id, world->commander.local_pos);
@@ -1743,15 +2120,38 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
                  world->resources_ore, world->resources_fuel, world->resources_power, world->entity_count);
     }
 
-    /* Holo-Globe Active Command Menu or Console Interaction Prompt */
+    /* Tier 3 Interactive Holo-Globe Command Bar (or Console Interaction Prompt) */
     if (world->commander.at_holo_globe) {
-        hud_border_box(rr, ortho, w * 0.5f - 360.0f, h - 134.0f, 720.0f, 72.0f,
-                       (RtsVec4f){0.03f, 0.08f, 0.16f, 0.90f}, (RtsVec4f){0.26f, 0.96f, 1.0f, 0.98f});
-        hud_text(rr, ortho, w * 0.5f - 344.0f, h - 122.0f, 1.15f, (RtsVec4f){1.0f, 0.84f, 0.30f, 1.0f},
-                 "HOLO-GLOBE COMMAND LINK ACTIVE [PRESS E TO STEP BACK]");
-        hud_text(rr, ortho, w * 0.5f - 344.0f, h - 94.0f, 1.04f, (RtsVec4f){0.94f, 0.98f, 1.0f, 1.0f},
-                 "[1] QUEUE TANK  [2] ATTACK RAIDER  [3] ASTROGATOR 400KM ORBIT  [4] BOARD DREADNOUGHT");
-    } else if (rr->live_prompt[0] != '\0' || near_c != NULL) {
+        hud_border_box(rr, ortho, w * 0.5f - 410.0f, h - 150.0f, 820.0f, 92.0f,
+                       (RtsVec4f){0.02f, 0.07f, 0.15f, 0.93f}, (RtsVec4f){0.26f, 0.96f, 1.0f, 0.98f});
+        if (rr->active_holo) {
+            const RtsHoloGlobeState *hg = rr->active_holo;
+            char top_bar[160];
+            snprintf(top_bar, sizeof(top_bar), "3D HOLO-GLOBE | VIEW %.0fKM | SEL:%zu | MODE:%s | [E] EXIT",
+                     rts_hologlobe_view_altitude_km(hg), hg->selected_count, rts_hologlobe_mode_name(hg->mode));
+            char top_up[128];
+            upper_trunc_copy(top_up, sizeof(top_up), top_bar, 96);
+            hud_text(rr, ortho, w * 0.5f - 394.0f, h - 138.0f, 1.0f, (RtsVec4f){1.0f, 0.86f, 0.32f, 1.0f}, top_up);
+            hud_text(rr, ortho, w * 0.5f - 394.0f, h - 114.0f, 1.0f, (RtsVec4f){0.94f, 0.98f, 1.0f, 1.0f},
+                     "[1]SELECT [2]MOVE [3]ATTACK [4]ORBIT [5]DOCK [6]REENTRY [7]BOARD [X]BUILD GHOST [Q/R]ZOOM");
+            char st_bar[160];
+            if (hg->mode == RTS_HOLO_MODE_PLACE_BUILDING) {
+                snprintf(st_bar, sizeof(st_bar), "GHOST: %.26s -> %.46s [LMB CONFIRM]", hg->place_blueprint_id, hg->ghost_reason);
+            } else {
+                snprintf(st_bar, sizeof(st_bar), "%.92s", hg->last_feedback);
+            }
+            char st_up[128];
+            upper_trunc_copy(st_up, sizeof(st_up), st_bar, 96);
+            RtsVec4f scol = (hg->mode == RTS_HOLO_MODE_PLACE_BUILDING && !hg->ghost_valid)
+                ? (RtsVec4f){1.0f, 0.36f, 0.44f, 1.0f} : (RtsVec4f){0.34f, 0.98f, 0.90f, 1.0f};
+            hud_text(rr, ortho, w * 0.5f - 394.0f, h - 88.0f, 1.0f, scol, st_up);
+        } else {
+            hud_text(rr, ortho, w * 0.5f - 394.0f, h - 134.0f, 1.10f, (RtsVec4f){1.0f, 0.84f, 0.30f, 1.0f},
+                     "HOLO-GLOBE COMMAND LINK ACTIVE [PRESS E TO STEP BACK]");
+            hud_text(rr, ortho, w * 0.5f - 394.0f, h - 102.0f, 1.04f, (RtsVec4f){0.94f, 0.98f, 1.0f, 1.0f},
+                     "[1] QUEUE TANK  [2] ATTACK RAIDER  [3] ASTROGATOR 400KM ORBIT  [4] BOARD DREADNOUGHT");
+        }
+    } else if ((!rr->active_gear || !rr->active_gear->facility_open) && (rr->live_prompt[0] != '\0' || near_c != NULL)) {
         char pbuf[160];
         if (rr->live_prompt[0] != '\0') {
             snprintf(pbuf, sizeof(pbuf), "%.120s", rr->live_prompt);
@@ -1767,7 +2167,7 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
 
     const char *toast = rr->live_toast[0]
         ? rr->live_toast
-        : "WASD: WALK ROOMS | [/]: TURBOLIFT DECK | N: NEXT MEGASHIP | F: RED ALERT | E: CONSOLE | B: BOARD | G: 400KM ORBIT";
+        : "WASD: WALK | TAB: WRIST-PAD | Z: OPTICS | V: RADIAL | E: CONSOLE/HOLO-GLOBE | [/]: LIFT | N: SHIP";
     render_hud_common(rr, world, input, loc_upper, sub_line, toast, false);
     rr->gfx.end_frame(rr->gfx.state);
 }
