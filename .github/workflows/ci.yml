@@ -83,9 +83,12 @@ jobs:
         run: |
           emcmake cmake -B build/web -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
           cmake --build build/web -j$(nproc)
-      - name: Verify Loose External Manifest & Non-Baked Output
+      - name: Verify Loose External Manifest & Smoke Test Compiled 1prtsg.wasm in Node.js
         run: |
           test -f build/web/1prtsg.wasm
           test -f build/web/1prtsg.js
           python3 tools/generate_manifest.py
           test -f manifest.json
+          cp manifest.json build/web/
+          cp -r assets scripts config mods build/web/
+          node tools/test_wasm_node.mjs build/web

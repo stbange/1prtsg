@@ -219,11 +219,27 @@
       return total;
     }
 
-    // Verify WebGL 2 support early with a clear diagnostic
+    // Verify WebGL 2 support (including software fallback when allowed by browser)
+    let webgl2Supported = false;
     (function checkWebGL2() {
-      const probe = document.createElement('canvas');
-      if (!probe.getContext('webgl2')) {
-        showFatal('WebGL 2.0 is required to run 1stPRTS in the browser. Please enable hardware acceleration or try Chrome/Firefox/Edge/Safari.');
+      try {
+        const probe = document.createElement('canvas');
+        const gl = probe.getContext('webgl2', { failIfMajorPerformanceCaveat: false });
+        webgl2Supported = Boolean(gl);
+        if (gl) {
+          const ext = gl.getExtension('WEBGL_lose_context');
+          if (ext) ext.loseContext();
+        }
+      } catch (_) {
+        webgl2Supported = false;
+      }
+      if (!webgl2Supported) {
+        loaderTextEl.textContent = 'WebGL 2.0 context could not be created by your browser GPU driver.';
+        showFatal(
+          'WebGL 2.0 is disabled or blocked by your browser/GPU driver. ' +
+          'In Firefox: enable Hardware Acceleration (Settings -> General -> Performance) or set webgl.force-enabled = true in about:config, ' +
+          'or open in Chrome/Edge. External loose assets & WASM loaded cleanly.'
+        );
       }
     })();
 
@@ -233,6 +249,9 @@
       print: (txt) => console.log('[1prtsg]', txt),
       printErr: (txt) => console.warn('[1prtsg]', txt),
       onRuntimeInitialized: async function () {
+        if (!webgl2Supported) {
+          return;
+        }
         try {
           const count = await syncExternalManifestToFS(Module);
           const isCoarse = window.matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0);
@@ -246,7 +265,11 @@
           const h = Math.max(360, Math.min(1080, window.innerHeight || 720));
           statusEl.textContent =
             'Loaded ' + count + ' loose external files (76 unique 3D constructs) · L: Tactical | M: Sandbox RTS | C: 76-Unit Catalog | 1-9: Scenes';
-          Module.callMain(['--data-dir', '/game', '--width', String(w), '--height', String(h)]);
+          const rc = Module.callMain(['--data-dir', '/game', '--width', String(w), '--height', String(h)]);
+          if (rc !== 0) {
+            showFatal('Engine exited during startup (code ' + rc + '). Check browser console for WebGL/SDL details.');
+            return;
+          }
           loaderEl.classList.add('hidden');
           canvasEl.focus();
         } catch (err) {

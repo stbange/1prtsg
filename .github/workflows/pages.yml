@@ -51,6 +51,9 @@ jobs:
           test -f site/assets/models/space_command_dreadnought.obj
           test -f site/scripts/interiors/catalog.lua
 
+      - name: Smoke Test Compiled 1prtsg.wasm in Node.js (All 19 Game Scenarios)
+        run: node tools/test_wasm_node.mjs site
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 

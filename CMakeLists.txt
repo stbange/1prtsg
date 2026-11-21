@@ -252,6 +252,8 @@ if(EMSCRIPTEN)
     target_link_options(1prtsg PRIVATE
         "-sUSE_WEBGL2=1"
         "-sFULL_ES3=1"
+        "-sSTACK_SIZE=4194304"
+        "-sINITIAL_MEMORY=67108864"
         "-sALLOW_MEMORY_GROWTH=1"
         "-sFORCE_FILESYSTEM=1"
         "-sNO_EXIT_RUNTIME=1"

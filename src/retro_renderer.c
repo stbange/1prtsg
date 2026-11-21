@@ -416,7 +416,7 @@ static void hud_border_box(RtsRetroRenderer *rr, RtsMat4f ortho, float x, float 
 
 static void hud_text(RtsRetroRenderer *rr, RtsMat4f ortho, float x, float y, float scale, RtsVec4f col, const char *text) {
     if (!text || rr->tex_font_atlas == RTS_GFX_INVALID) return;
-    RtsVertex verts[128 * 6];
+    static RtsVertex verts[128 * 6];
     size_t c = 0;
     float cx = x;
     float gw = 8.0f * scale;

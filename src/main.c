@@ -11,58 +11,69 @@
 #include <stdlib.h>
 #include <string.h>
 
-static int run_headless(const RtsAppConfig *cfg) {
+typedef struct HeadlessState {
     RtsVfs vfs;
-    if (!rts_vfs_init(&vfs, cfg->data_dir ? cfg->data_dir : ".", NULL)) {
+    RtsWorld world;
+    RtsInputRouter input;
+    RtsVoxelChunk voxel;
+    RtsAudioEngine audio;
+    RtsEconomySystem economy;
+    RtsCommanderController ctrl;
+    RtsBoardingSystem boarding;
+    RtsRetroRenderer renderer;
+    RtsLuaVm lua;
+} HeadlessState;
+
+static int run_headless(const RtsAppConfig *cfg) {
+    HeadlessState *hs = (HeadlessState *)calloc(1, sizeof(HeadlessState));
+    if (!hs) {
+        fprintf(stderr, "[1prtsg] Out of memory\n");
+        return 1;
+    }
+    if (!rts_vfs_init(&hs->vfs, cfg->data_dir ? cfg->data_dir : ".", NULL)) {
         fprintf(stderr, "[1prtsg] VFS init failed\n");
+        free(hs);
         return 1;
     }
     if (cfg->mod_to_mount && cfg->mod_to_mount[0] != '\0') {
-        if (!rts_vfs_mount_mod(&vfs, cfg->mod_to_mount)) {
+        if (!rts_vfs_mount_mod(&hs->vfs, cfg->mod_to_mount)) {
             fprintf(stderr, "[1prtsg] Failed to mount mod '%s'\n", cfg->mod_to_mount);
+            free(hs);
             return 1;
         }
     }
 
-    RtsWorld world;
-    rts_world_init(&world, rts_planet_earthlike(42u), cfg->seed != 0u ? cfg->seed : 1337u);
-    RtsInputRouter input;
-    rts_input_init(&input, (float)cfg->width, (float)cfg->height, false);
-    RtsVoxelChunk voxel;
-    rts_voxel_init(&voxel, 1.0f);
-    RtsAudioEngine audio;
-    rts_audio_init(&audio, rts_audio_null_create(), &vfs, 22050);
-    RtsEconomySystem economy;
-    rts_economy_init(&economy);
-    RtsCommanderController ctrl;
-    rts_controller_init(&ctrl);
-    RtsBoardingSystem boarding;
-    rts_boarding_init(&boarding);
-    RtsRetroRenderer renderer;
-    rts_renderer_init(&renderer, rts_gfx_null_create(), &vfs, cfg->width, cfg->height);
+    rts_world_init(&hs->world, rts_planet_earthlike(42u), cfg->seed != 0u ? cfg->seed : 1337u);
+    rts_input_init(&hs->input, (float)cfg->width, (float)cfg->height, false);
+    rts_voxel_init(&hs->voxel, 1.0f);
+    rts_audio_init(&hs->audio, rts_audio_null_create(), &hs->vfs, 22050);
+    rts_economy_init(&hs->economy);
+    rts_controller_init(&hs->ctrl);
+    rts_boarding_init(&hs->boarding);
+    rts_renderer_init(&hs->renderer, rts_gfx_null_create(), &hs->vfs, cfg->width, cfg->height);
 
-    RtsLuaVm lua;
-    if (!rts_lua_init(&lua, &vfs, &world, &input, &voxel, &renderer)) {
+    if (!rts_lua_init(&hs->lua, &hs->vfs, &hs->world, &hs->input, &hs->voxel, &hs->renderer)) {
         fprintf(stderr, "[1prtsg] Lua VM init failed\n");
-        rts_audio_shutdown(&audio);
-        rts_renderer_shutdown(&renderer);
+        rts_audio_shutdown(&hs->audio);
+        rts_renderer_shutdown(&hs->renderer);
+        free(hs);
         return 1;
     }
-    rts_lua_attach_phase2(&lua, &audio, &economy, &ctrl);
-    rts_lua_attach_phase3(&lua, &boarding);
+    rts_lua_attach_phase2(&hs->lua, &hs->audio, &hs->economy, &hs->ctrl);
+    rts_lua_attach_phase3(&hs->lua, &hs->boarding);
     if (cfg->lua_coverage) {
-        rts_lua_enable_coverage(&lua, true);
+        rts_lua_enable_coverage(&hs->lua, true);
     }
 
     const char *script = cfg->test_script ? cfg->test_script : "main.lua";
     int rc = 0;
-    if (!rts_lua_exec_vfs_script(&lua, script)) {
-        fprintf(stderr, "[1prtsg] Lua error in '%s': %s\n", script, lua.last_error);
+    if (!rts_lua_exec_vfs_script(&hs->lua, script)) {
+        fprintf(stderr, "[1prtsg] Lua error in '%s': %s\n", script, hs->lua.last_error);
         rc = 1;
     }
 
     if (rc == 0 && cfg->lua_coverage) {
-        double pct = rts_lua_report_coverage(&lua, cfg->min_lua_coverage, true);
+        double pct = rts_lua_report_coverage(&hs->lua, cfg->min_lua_coverage, true);
         if (pct < cfg->min_lua_coverage) {
             fprintf(stderr, "[1prtsg] FAIL: Lua coverage %.2f%% < %.2f%%\n", pct, cfg->min_lua_coverage);
             rc = 1;
@@ -71,9 +82,10 @@ static int run_headless(const RtsAppConfig *cfg) {
         }
     }
 
-    rts_lua_shutdown(&lua);
-    rts_audio_shutdown(&audio);
-    rts_renderer_shutdown(&renderer);
+    rts_lua_shutdown(&hs->lua);
+    rts_audio_shutdown(&hs->audio);
+    rts_renderer_shutdown(&hs->renderer);
+    free(hs);
     return rc;
 }
 
