@@ -3,9 +3,11 @@
 // with all loose external assets/scripts mounted into MEMFS and runs all 19 game scenarios.
 
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import vm from 'node:vm';
 
+const nodeRequire = createRequire(import.meta.url);
 const siteDir = path.resolve(process.argv[2] || 'site');
 const jsPath = path.join(siteDir, '1prtsg.js');
 const manifestPath = path.join(siteDir, 'manifest.json');
@@ -30,11 +32,7 @@ const sandbox = {
   console,
   process,
   Buffer,
-  require: (id) => {
-    if (id === 'fs') return fs;
-    if (id === 'path') return path;
-    throw new Error('Unexpected require: ' + id);
-  },
+  require: nodeRequire,
   __dirname: siteDir,
   __filename: jsPath,
   setTimeout,
