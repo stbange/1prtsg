@@ -21,6 +21,44 @@ check(bp_count == 76, "Expected 76 registered blueprints, got " .. tostring(bp_c
 check(role_count == 12, "Expected 12 registered crew roles, got " .. tostring(role_count))
 check(ent_count >= 6, "Expected vertical slice entities spawned")
 
+-- 2b. Verify ALL 76 constructs have unique sculpted .obj models AND tailored enterable interiors
+local registry = require("units.registry")
+local interiors = require("interiors.catalog")
+check(interiors.count() == 76, "Expected 76 tailored interior specs, got " .. tostring(interiors.count()))
+local seen_meshes = {}
+for i = 1, #registry.all do
+    local bp = registry.all[i]
+    local expected_mesh = "models/" .. bp.id .. ".obj"
+    check(bp.mesh == expected_mesh, "Construct " .. bp.id .. " must reference unique mesh " .. expected_mesh)
+    check(not seen_meshes[bp.mesh], "Duplicate mesh path: " .. tostring(bp.mesh))
+    seen_meshes[bp.mesh] = true
+    local spec = interiors.get_spec(bp.id)
+    check(spec ~= nil and spec.decks >= 1, "Missing interior spec for " .. bp.id)
+    local layout = interiors.build_layout(bp)
+    check(layout ~= nil and #layout.rooms >= 1 and #layout.consoles >= 1, "Invalid interior layout for " .. bp.id)
+    if bp.holo_globe then
+        local has_hg = false
+        for k = 1, #layout.consoles do
+            if layout.consoles[k].ctype == interiors.CONSOLE_HOLO_GLOBE then has_hg = true end
+        end
+        check(has_hg, "Holo-globe construct " .. bp.id .. " missing HOLO_GLOBE console")
+    end
+    if bp.escape_pod then
+        local has_ep = false
+        for k = 1, #layout.consoles do
+            if layout.consoles[k].ctype == interiors.CONSOLE_ESCAPE_POD then has_ep = true end
+        end
+        check(has_ep, "Escape-pod construct " .. bp.id .. " missing ESCAPE_POD console")
+    end
+end
+check(interiors.build_layout({ id = "nonexistent_bp" }) == nil, "Unknown blueprint should return nil layout")
+local r0, c0, p0 = interiors.hydrate_entity(99999, registry.all[1])
+check(r0 == 0 and c0 == 0 and p0 == 0, "Invalid entity hydration should return 0,0,0")
+local r_bad, c_bad, p_bad = interiors.hydrate_entity(ACTIVE_MISSION.citadel, { id = "nonexistent_bp" })
+check(r_bad == 0 and c_bad == 0 and p_bad == 0, "Unknown spec hydration should return 0,0,0")
+local rm_cnt, pt_cnt, cn_cnt = engine.interior.counts()
+check(rm_cnt >= 20 and pt_cnt >= 6 and cn_cnt >= 10, "Live vertical slice interiors must be hydrated in C engine")
+
 -- 3. Factions unit test
 local factions = require("factions.factions")
 check(factions.get_by_id(1).code == "SOLAR", "Faction 1 should be SOLAR")

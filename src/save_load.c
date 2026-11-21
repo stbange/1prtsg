@@ -61,6 +61,39 @@ size_t rts_save_serialize(const RtsWorld *w, const RtsEconomySystem *eco, char *
                  e->order_target_pos.x, e->order_target_pos.y, e->order_target_pos.z);
         if (!append_fmt(out_buf, buf_cap, &pos, line)) return 0u;
     }
+
+    for (size_t i = 0; i < w->interiors.room_count; ++i) {
+        const RtsInteriorRoom *rm = &w->interiors.rooms[i];
+        if (!rm->active) continue;
+        snprintf(line, sizeof(line), "ROOM %u %.9g %.9g %.9g %.9g %.9g %.9g %d %.63s\n",
+                 rm->frame_id,
+                 rm->local_bounds.min.x, rm->local_bounds.min.y, rm->local_bounds.min.z,
+                 rm->local_bounds.max.x, rm->local_bounds.max.y, rm->local_bounds.max.z,
+                 rm->pressurized ? 1 : 0, rm->name);
+        if (!append_fmt(out_buf, buf_cap, &pos, line)) return 0u;
+    }
+
+    for (size_t i = 0; i < w->interiors.portal_count; ++i) {
+        const RtsInteriorPortal *pt = &w->interiors.portals[i];
+        if (!pt->active) continue;
+        snprintf(line, sizeof(line), "PORTAL %u %u %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %d %.63s\n",
+                 pt->from_frame, pt->to_frame,
+                 pt->trigger_box.min.x, pt->trigger_box.min.y, pt->trigger_box.min.z,
+                 pt->trigger_box.max.x, pt->trigger_box.max.y, pt->trigger_box.max.z,
+                 pt->dest_local_pos.x, pt->dest_local_pos.y, pt->dest_local_pos.z,
+                 pt->is_open ? 1 : 0, pt->name);
+        if (!append_fmt(out_buf, buf_cap, &pos, line)) return 0u;
+    }
+
+    for (size_t i = 0; i < w->interiors.console_count; ++i) {
+        const RtsConsoleStation *cs = &w->interiors.consoles[i];
+        if (!cs->active) continue;
+        snprintf(line, sizeof(line), "CONSOLE %u %d %.9g %.9g %.9g %.9g %u %.63s\n",
+                 cs->frame_id, (int)cs->type,
+                 cs->local_pos.x, cs->local_pos.y, cs->local_pos.z,
+                 cs->interact_radius, cs->owner_entity_id, cs->name);
+        if (!append_fmt(out_buf, buf_cap, &pos, line)) return 0u;
+    }
     return pos;
 }
 
@@ -143,6 +176,37 @@ bool rts_save_deserialize(const char *snapshot_text, RtsWorld *w, RtsEconomySyst
                     e->order_type = (RtsOrderType)otype;
                     e->order_target_pos = otarget;
                 }
+            }
+        } else if (strncmp(line, "ROOM ", 5) == 0) {
+            RtsFrameId fid = 0;
+            RtsAabb b;
+            int press = 1;
+            char rname[64];
+            if (sscanf(line + 5, "%u %lf %lf %lf %lf %lf %lf %d %63[^\n]",
+                       &fid, &b.min.x, &b.min.y, &b.min.z, &b.max.x, &b.max.y, &b.max.z, &press, rname) == 9) {
+                rts_interior_add_room(&w->interiors, fid, rname, b, (RtsVec3f){0.72f, 0.88f, 1.0f}, press != 0);
+            }
+        } else if (strncmp(line, "PORTAL ", 7) == 0) {
+            RtsFrameId ff = 0, ft = 0;
+            RtsAabb b;
+            RtsVec3d dst;
+            int is_open = 1;
+            char pname[64];
+            if (sscanf(line + 7, "%u %u %lf %lf %lf %lf %lf %lf %lf %lf %lf %d %63[^\n]",
+                       &ff, &ft, &b.min.x, &b.min.y, &b.min.z, &b.max.x, &b.max.y, &b.max.z,
+                       &dst.x, &dst.y, &dst.z, &is_open, pname) == 13) {
+                rts_interior_add_portal(&w->interiors, ff, ft, pname, b, dst, is_open != 0);
+            }
+        } else if (strncmp(line, "CONSOLE ", 8) == 0) {
+            RtsFrameId fid = 0;
+            int ctype = 0;
+            RtsVec3d cp;
+            double rad = 3.0;
+            uint32_t owner = 0;
+            char cname[64];
+            if (sscanf(line + 8, "%u %d %lf %lf %lf %lf %u %63[^\n]",
+                       &fid, &ctype, &cp.x, &cp.y, &cp.z, &rad, &owner, cname) == 8) {
+                rts_interior_add_console(&w->interiors, fid, cname, (RtsConsoleType)ctype, cp, rad, owner);
             }
         }
     }

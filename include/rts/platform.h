@@ -11,6 +11,7 @@ typedef struct RtsAppConfig {
     const char *test_script;
     const char *screenshot_dir;
     const char *fun_frames_dir;
+    const char *roster_gallery_dir;
     const char *telemetry_out;
     const char *mod_to_mount;
     int width;
@@ -27,9 +28,11 @@ typedef struct RtsAppConfig {
 int rts_platform_run_interactive(const RtsAppConfig *cfg);
 int rts_platform_capture_screenshots(const RtsAppConfig *cfg);
 int rts_platform_capture_fun_frames(const RtsAppConfig *cfg);
+int rts_platform_capture_roster_gallery(const RtsAppConfig *cfg);
 
 /* Emscripten / WebXR bridge entry points */
 void rts_web_notify_touch_device(int is_coarse_touch);
+int rts_web_is_touch_device(void);
 void rts_webxr_on_session_state(int active);
 void rts_webxr_on_frame(const RtsXrFrameState *state);
 bool rts_webxr_get_latest_state(RtsXrFrameState *out_state);

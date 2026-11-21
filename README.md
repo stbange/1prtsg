@@ -29,11 +29,32 @@
 
 ---
 
-## Complete Feature Matrix (Phases 1–4 + Solaris Art Direction Overhaul)
+## Complete 76-Construct Unique Model & Enterable Interior Gallery (`assets/models/<id>.obj` + `scripts/interiors/catalog.lua`)
+
+Every single one of the **76 constructs** across all 6 classes ships with its own unique sculpted Solaris Retro-Futurism `.obj` model loaded dynamically via VFS (`rts_renderer_get_mesh`) and its own tailored multi-deck enterable interior layout (rooms, airlock portals, and role-accurate consoles):
+
+| Class 0: 24 Planetary Buildings | Class 1: 10 Ground Vehicles |
+| :---: | :---: |
+| ![Class 0: 24 Planetary Buildings](docs/screenshots/gallery_01_buildings_24.png) | ![Class 1: 10 Ground Vehicles](docs/screenshots/gallery_02_vehicles_10.png) |
+
+| Class 2: 10 Naval Ships | Class 3: 8 Aircraft & Transports |
+| :---: | :---: |
+| ![Class 2: 10 Naval Ships](docs/screenshots/gallery_03_naval_10.png) | ![Class 3: 8 Aircraft](docs/screenshots/gallery_04_aircraft_8.png) |
+
+| Class 4: 14 Orbital & Deep-Space Craft | Class 5: 10 Space Stations & Drydocks |
+| :---: | :---: |
+| ![Class 4: 14 Spacecraft](docs/screenshots/gallery_05_spacecraft_14.png) | ![Class 5: 10 Space Stations](docs/screenshots/gallery_06_stations_10.png) |
+
+### Seamless First-Person Planetary-to-Orbital Sandbox RTS (`Mode M`)
+![Seamless Sandbox RTS War Room](docs/screenshots/gallery_07_seamless_sandbox_rts.png)
+
+---
+
+## Complete Feature Matrix (Phases 1–4 + Solaris Art Direction + 76 Unique Models & Seamless RTS)
 
 - **Exclusively First-Person Commander & Hardcore Ironman (`src/world.c`, `src/controller.c`):** Zero god-camera. Walk inside 1:1 multi-deck interiors, interact with physical War Room **3D Planetary & Orbital Holo-Globes**, Factory Terminals, Pilot Seats, and Bridge Helms, take direct manual piloting control of any construct (then hand back to AI crew), and survive Critical Reactor Meltdowns via physical **Escape Pod** evacuation.
 - **True-Scale Spherical Planet & Real Orbital Mechanics (`src/planet.c`, `src/controller.c`):** 64-bit geocentric coordinates, 6-face cube-sphere terrain/oceans, local ENU surface frames, exponential atmosphere, aerobraking shielded re-entry heat flux, Velocity-Verlet orbital integration, Keplerian elements, Hohmann delta-v transfers, and automated Astrogator ascent/rendezvous/docking/re-entry.
-- **Doubled External Roster (`docs/ROSTER.md`, `scripts/units/`, `scripts/crew/`):** **76 distinct enterable constructs** (24 Buildings · 10 Ground Vehicles · 10 Naval Ships · 8 Aircraft · 14 Spacecraft · 10 Space Stations) + **12 crew/personnel roles** registered entirely from external MIT Lua 5.4 scripts.
+- **Doubled External Roster (`docs/ROSTER.md`, `scripts/units/`, `scripts/interiors/catalog.lua`, `scripts/crew/`):** **76 distinct enterable constructs** (24 Buildings · 10 Ground Vehicles · 10 Naval Ships · 8 Aircraft · 14 Spacecraft · 10 Space Stations), each with its own dedicated sculpted `.obj` model (`assets/models/<id>.obj`) and tailored multi-deck enterable interior + **12 crew/personnel roles** registered entirely from external MIT Lua 5.4 scripts.
 - **Multi-Theater Economy, Spherical Horizon Sensors & Comms Relays (`src/economy.c`):** Ore/Fuel/Power/Manpower ledgers, 1:1 timed production queues, true planetary curvature horizon occlusion for Fog-of-War sensors (Orbital Recon Satellites), and multi-hop Comms Relay BFS networks (destroying a GEO Relay severs remote surface command links).
 - **3D Spatial Audio & Orbital Acoustics (`src/audio.c`, `src/audio_sdl3.c`):** External WAV PCM decoder, 3D attenuation/panning, armored interior hull low-pass muffling, and orbital vacuum silence for airborne sounds while preserving hull-conducted vibration and radio comms.
 - **Multi-Deck Capital Ship Boarding & Reactor Meltdowns (`src/boarding.c`):** Deck-by-deck marine assaults (`Hangar/Airlock` -> `Engineering` -> `Bridge/CIC`), hull decompression vacuum hazards requiring `mag_boots`, intact enemy flagship capture (flipping `faction_id`), and timed Critical Reactor Meltdown countdowns.
@@ -55,7 +76,7 @@
 cmake --preset linux-coverage
 cmake --build --preset linux-coverage -j$(nproc)
 
-# Run 25 C Unity unit tests, Lua unit tests (>= 95% Lua coverage), and 18 headless automated game tests
+# Run C Unity unit tests, Lua unit tests (>= 95% Lua coverage), and 19 headless automated game tests
 find build/linux-coverage -name '*.gcda' -delete
 ctest --preset linux-coverage --output-on-failure
 
@@ -66,13 +87,20 @@ python3 tools/check_coverage.py --build-dir build/linux-coverage --source-root .
 ### Run Interactively, Try Mods, or Capture Live OpenGL Screenshots
 
 ```bash
-# Launch interactive SDL3 + OpenGL window (WASD walk/pilot, E interact, Tab Wrist-Pad, L live camera, keys 1-9 showcase scenes)
+# Launch interactive SDL3 + OpenGL window:
+#   L = Live Solaris Tactical Defense | M = Seamless Planetary-to-Orbital Sandbox RTS
+#   WASD = Walk/Pilot | E = Console/Holo-Globe [1-4 Orders] | B = Board/EVA | G = Astrogator 400km Orbit
+#   F5/F9 = Quicksave/Quickload (RTS_SAVE_V1) | Keys 1-9 = Showcase Scenes
 ./build/linux-coverage/1prtsg --data-dir .
 
 # Launch with the external Emerald Vanguard mod mounted (zero recompilation!)
 ./build/linux-coverage/1prtsg --data-dir . --mod example_mod
 
-# Capture all 9 base 1280x720 OpenGL screenshots headlessly via Xvfb + Mesa
+# Capture all 6 class galleries (76 unique sculpted constructs!) + live Sandbox RTS frame
+LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1600x960x24" \
+  ./build/linux-coverage/1prtsg --data-dir . --width 1600 --height 960 --capture-roster-gallery docs/screenshots
+
+# Capture all 9 base 1280x720 OpenGL showcase screenshots headlessly via Xvfb + Mesa
 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" \
   ./build/linux-coverage/1prtsg --data-dir . --capture-screenshots docs/screenshots
 ```

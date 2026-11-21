@@ -123,6 +123,8 @@ int main(int argc, char **argv) {
             cfg.mod_to_mount = argv[++i];
         } else if (strcmp(argv[i], "--capture-screenshots") == 0 && i + 1 < argc) {
             cfg.screenshot_dir = argv[++i];
+        } else if (strcmp(argv[i], "--capture-roster-gallery") == 0 && i + 1 < argc) {
+            cfg.roster_gallery_dir = argv[++i];
         } else if (strcmp(argv[i], "--capture-fun-frames") == 0 && i + 1 < argc) {
             cfg.fun_frames_dir = argv[++i];
         } else if (strcmp(argv[i], "--min-lua-coverage") == 0 && i + 1 < argc) {
@@ -139,6 +141,9 @@ int main(int argc, char **argv) {
     }
     if (cfg.headless) {
         return run_headless(&cfg);
+    }
+    if (cfg.roster_gallery_dir) {
+        return rts_platform_capture_roster_gallery(&cfg);
     }
     if (cfg.fun_frames_dir) {
         return rts_platform_capture_fun_frames(&cfg);

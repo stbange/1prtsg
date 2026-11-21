@@ -11,7 +11,7 @@
 #define GLFN(name) rts_gl.name
 #endif
 
-#define MAX_GL_RES 128
+#define MAX_GL_RES 256
 
 typedef struct GlMeshRes {
     GLuint vao;

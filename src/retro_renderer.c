@@ -209,7 +209,75 @@ void rts_renderer_shutdown(RtsRetroRenderer *rr) {
     if (!rr || !rr->gfx.shutdown) return;
     rr->gfx.shutdown(rr->gfx.state);
     rr->gfx.state = NULL;
+    rr->mesh_cache_count = 0;
     rr->initialized = false;
+}
+
+const RtsMeshCacheEntry *rts_renderer_get_mesh_entry(RtsRetroRenderer *rr, const char *rel_path) {
+    if (!rr || !rr->initialized || !rel_path || rel_path[0] == '\0') {
+        return NULL;
+    }
+    for (size_t i = 0; i < rr->mesh_cache_count; ++i) {
+        if (strcmp(rr->mesh_cache[i].rel_path, rel_path) == 0) {
+            return &rr->mesh_cache[i];
+        }
+    }
+    if (rr->mesh_cache_count >= RTS_MESH_CACHE_MAX) {
+        return NULL;
+    }
+    char *txt = rts_vfs_read_text(rr->vfs, "assets", rel_path, NULL);
+    if (!txt) {
+        return NULL;
+    }
+    RtsObjMesh m;
+    if (!rts_obj_load_memory(txt, (RtsVec3f){1.0f, 1.0f, 1.0f}, &m)) {
+        rts_vfs_free(txt);
+        return NULL;
+    }
+    rts_vfs_free(txt);
+
+    RtsVec3f bmin = { 1e9f,  1e9f,  1e9f};
+    RtsVec3f bmax = {-1e9f, -1e9f, -1e9f};
+    for (size_t i = 0; i < m.vert_count; ++i) {
+        if (m.verts[i].px < bmin.x) bmin.x = m.verts[i].px;
+        if (m.verts[i].py < bmin.y) bmin.y = m.verts[i].py;
+        if (m.verts[i].pz < bmin.z) bmin.z = m.verts[i].pz;
+        if (m.verts[i].px > bmax.x) bmax.x = m.verts[i].px;
+        if (m.verts[i].py > bmax.y) bmax.y = m.verts[i].py;
+        if (m.verts[i].pz > bmax.z) bmax.z = m.verts[i].pz;
+    }
+    float dx = bmax.x - bmin.x;
+    float dy = bmax.y - bmin.y;
+    float dz = bmax.z - bmin.z;
+    float rad = 0.5f * sqrtf(dx * dx + dy * dy + dz * dz);
+    if (rad < 0.05f) rad = 1.0f;
+
+    RtsGfxHandle h = rr->gfx.create_mesh(rr->gfx.state, m.verts, m.vert_count, false);
+    rts_obj_free(&m);
+    if (h == RTS_GFX_INVALID) {
+        return NULL;
+    }
+
+    RtsMeshCacheEntry *e = &rr->mesh_cache[rr->mesh_cache_count++];
+    memset(e, 0, sizeof(*e));
+    snprintf(e->rel_path, sizeof(e->rel_path), "%s", rel_path);
+    e->handle = h;
+    e->bounds_min = bmin;
+    e->bounds_max = bmax;
+    e->bounds_radius = rad;
+    return e;
+}
+
+RtsGfxHandle rts_renderer_get_mesh(RtsRetroRenderer *rr, const char *rel_path) {
+    const RtsMeshCacheEntry *e = rts_renderer_get_mesh_entry(rr, rel_path);
+    return e ? e->handle : RTS_GFX_INVALID;
+}
+
+void rts_renderer_set_live_status(RtsRetroRenderer *rr, const char *mode_tag, const char *prompt, const char *toast) {
+    if (!rr) return;
+    if (mode_tag) snprintf(rr->live_mode_tag, sizeof(rr->live_mode_tag), "%s", mode_tag);
+    if (prompt) snprintf(rr->live_prompt, sizeof(rr->live_prompt), "%s", prompt);
+    if (toast) snprintf(rr->live_toast, sizeof(rr->live_toast), "%s", toast);
 }
 
 static void draw_mesh(RtsRetroRenderer *rr, RtsGfxHandle sh, RtsGfxHandle mesh, RtsGfxHandle tex,
@@ -1014,15 +1082,208 @@ void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *worl
     rr->gfx.end_frame(rr->gfx.state);
 }
 
+static void upper_trunc_copy(char *dst, size_t dst_sz, const char *src, size_t max_chars) {
+    if (!dst || dst_sz == 0) return;
+    size_t limit = dst_sz - 1;
+    if (max_chars < limit) limit = max_chars;
+    size_t i = 0;
+    while (src && src[i] && i < limit) {
+        char c = src[i];
+        if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+        dst[i++] = c;
+    }
+    dst[i] = '\0';
+}
+
+void rts_renderer_render_roster_class(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsConstructClass cls, float time_s) {
+    (void)input;
+    if (!rr || !rr->initialized || !world) return;
+
+    const RtsConstructBlueprint *items[RTS_MAX_BLUEPRINTS];
+    size_t count = 0;
+    for (size_t i = 0; i < world->blueprint_count; ++i) {
+        if (world->blueprints[i].active && world->blueprints[i].construct_class == cls) {
+            items[count++] = &world->blueprints[i];
+        }
+    }
+
+    int cols = 5, rows = 2;
+    const char *cls_title = "CONSTRUCT ROSTER GALLERY";
+    float sky_mode = 1.0f;
+    bool hover_above = false;
+    if (cls == RTS_CLASS_BUILDING) {
+        cols = 6; rows = 4; sky_mode = 0.0f;
+        cls_title = "CLASS 0: PLANETARY BUILDINGS [24 UNIQUE SCULPTED MODELS | ALL ENTERABLE]";
+    } else if (cls == RTS_CLASS_GROUND_VEHICLE) {
+        cols = 5; rows = 2; sky_mode = 0.0f;
+        cls_title = "CLASS 1: GROUND VEHICLES [10 UNIQUE SCULPTED MODELS | ALL ENTERABLE]";
+    } else if (cls == RTS_CLASS_NAVAL_SHIP) {
+        cols = 5; rows = 2; sky_mode = 0.0f;
+        cls_title = "CLASS 2: NAVAL SHIPS [10 UNIQUE SCULPTED MODELS | ALL ENTERABLE]";
+    } else if (cls == RTS_CLASS_AIRCRAFT) {
+        cols = 4; rows = 2; sky_mode = 0.0f; hover_above = true;
+        cls_title = "CLASS 3: AIRCRAFT & TRANSPORTS [8 UNIQUE SCULPTED MODELS | ALL ENTERABLE]";
+    } else if (cls == RTS_CLASS_SPACECRAFT) {
+        cols = 5; rows = 3; sky_mode = 1.0f; hover_above = true;
+        cls_title = "CLASS 4: ORBITAL & DEEP-SPACE CRAFT [14 UNIQUE SCULPTED MODELS | ALL ENTERABLE]";
+    } else if (cls == RTS_CLASS_SPACE_STATION) {
+        cols = 5; rows = 2; sky_mode = 1.0f; hover_above = true;
+        cls_title = "CLASS 5: SPACE STATIONS & DRYDOCKS [10 UNIQUE SCULPTED MODELS | ALL ENTERABLE]";
+    }
+
+    float w = (float)rr->width;
+    float h = (float)rr->height;
+    RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+    RtsVec3f sun = {0.60f, 0.42f, -0.68f};
+    RtsVec3f light = {0.58f, 0.84f, 0.48f};
+    RtsQuatd idq = rts_quat_identity();
+
+    rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.02f, 0.04f, 0.09f, 1.0f});
+    RtsMat4f bg_proj = rts_mat4_perspective((float)(55.0 * RTS_DEG2RAD), w / (h > 0.0f ? h : 1.0f), 0.2f, 1200.0f);
+    RtsMat4f bg_vp = rts_mat4_mul(bg_proj, rts_mat4_look_at((RtsVec3f){0, 0, 0}, (RtsVec3f){0, 0.12f, -1.0f}, (RtsVec3f){0, 1, 0}));
+    rr->cur_cam_pos = (RtsVec3f){0, 0, 0};
+    rr->cur_fog_color = (RtsVec4f){0.04f, 0.08f, 0.16f, 0.12f};
+    draw_sky_dome(rr, bg_vp, (RtsVec3f){0, 0, 0}, sun, sky_mode, time_s);
+
+    float pad_x = 16.0f;
+    float pad_top = 66.0f;
+    float pad_bot = 46.0f;
+    float gap = 10.0f;
+    float cell_w = (w - 2.0f * pad_x - (float)(cols - 1) * gap) / (float)cols;
+    float cell_h = (h - pad_top - pad_bot - (float)(rows - 1) * gap) / (float)rows;
+    float label_h = (rows >= 4) ? 38.0f : 44.0f;
+
+    /* Draw frosted obsidian-slate tile backgrounds first so 3D viewports sit crisply on top */
+    for (size_t i = 0; i < count; ++i) {
+        int col = (int)(i % (size_t)cols);
+        int row = (int)(i / (size_t)cols);
+        float tx = pad_x + (float)col * (cell_w + gap);
+        float ty = pad_top + (float)row * (cell_h + gap);
+        hud_quad(rr, ortho, tx, ty, cell_w, cell_h, (RtsVec4f){0.03f, 0.06f, 0.13f, 0.72f});
+    }
+
+    bool face_prow_hero = (cls == RTS_CLASS_GROUND_VEHICLE || cls == RTS_CLASS_NAVAL_SHIP ||
+                           cls == RTS_CLASS_AIRCRAFT || cls == RTS_CLASS_SPACECRAFT);
+
+    /* Render each unique sculpted .obj construct inside its own distortion-free studio sub-viewport */
+    for (size_t i = 0; i < count; ++i) {
+        const RtsConstructBlueprint *bp = items[i];
+        int col = (int)(i % (size_t)cols);
+        int row = (int)(i / (size_t)cols);
+        float tx = pad_x + (float)col * (cell_w + gap);
+        float ty = pad_top + (float)row * (cell_h + gap);
+
+        int vx = (int)(tx + 3.0f);
+        int vw = (int)(cell_w - 6.0f);
+        int vh = (int)(cell_h - label_h - 4.0f);
+        int gl_vy = rr->height - (int)(ty + cell_h - label_h);
+        if (vw < 8 || vh < 8) continue;
+
+        if (rr->gfx.set_viewport) {
+            rr->gfx.set_viewport(rr->gfx.state, vx, gl_vy, vw, vh);
+        }
+        float tile_aspect = (float)vw / (float)vh;
+        RtsMat4f tproj = rts_mat4_perspective((float)(38.0 * RTS_DEG2RAD), tile_aspect, 0.15f, 80.0f);
+        RtsVec3f cam = {0.0f, 2.15f, 5.05f};
+        rr->cur_cam_pos = cam;
+        rr->cur_fog_color = (RtsVec4f){0.04f, 0.08f, 0.16f, 0.08f};
+        RtsMat4f vp = rts_mat4_mul(tproj, rts_mat4_look_at(cam, (RtsVec3f){0.0f, 0.05f, 0.0f}, (RtsVec3f){0.0f, 1.0f, 0.0f}));
+
+        /* Studio holographic turntable plinth & cyan calibration ring */
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_deck_floor, vp,
+                  rts_mat4_from_quat_trs(idq, (RtsVec3f){0.0f, -0.88f, 0.0f}, (RtsVec3f){1.78f, 0.07f, 1.78f}),
+                  (RtsVec4f){0.26f, 0.38f, 0.56f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(idq, (RtsVec3f){0.0f, -0.81f, 0.0f}, (RtsVec3f){1.86f, 1.86f, 1.86f}),
+                  (RtsVec4f){0.24f, 0.94f, 1.0f, 0.90f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+
+        const RtsMeshCacheEntry *me = rts_renderer_get_mesh_entry(rr, bp->mesh_path);
+        if (me && me->handle != RTS_GFX_INVALID) {
+            float sc = 1.60f / me->bounds_radius;
+            float cx = 0.5f * (me->bounds_min.x + me->bounds_max.x);
+            float cz = 0.5f * (me->bounds_min.z + me->bounds_max.z);
+            float base_y = hover_above ? -0.42f : -0.78f;
+            float base_yaw = face_prow_hero ? 2.48f : 0.58f;
+            float yaw = base_yaw + (float)(i % 3) * 0.09f + time_s * 0.08f;
+            RtsQuatd q = rts_quat_from_axis_angle(rts_v3d(0.0, 1.0, 0.0), yaw);
+            RtsVec3d offset = rts_quat_rotate(q, rts_v3d(-cx * sc, 0.0, -cz * sc));
+            RtsVec3f pos = {(float)offset.x, base_y - me->bounds_min.y * sc, (float)offset.z};
+            RtsMat4f model = rts_mat4_from_quat_trs(q, pos, (RtsVec3f){sc, sc, sc});
+            draw_mesh(rr, rr->sh_mesh, me->handle, rr->tex_hull_blue, vp, model,
+                      (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        }
+    }
+
+    if (rr->gfx.set_viewport) {
+        rr->gfx.set_viewport(rr->gfx.state, 0, 0, rr->width, rr->height);
+    }
+
+    /* Draw crisp tile borders and two-line razor-sharp Solaris metadata labels (>= 1.0x pixel font scale) */
+    float name_scale = (rows >= 4) ? 1.0f : 1.12f;
+    float meta_scale = 1.0f;
+    size_t max_name_ch = (size_t)((cell_w - 14.0f) / (7.36f * name_scale));
+    size_t max_meta_ch = (size_t)((cell_w - 14.0f) / (7.36f * meta_scale));
+    if (max_name_ch < 8) max_name_ch = 8;
+    if (max_meta_ch < 10) max_meta_ch = 10;
+
+    for (size_t i = 0; i < count; ++i) {
+        const RtsConstructBlueprint *bp = items[i];
+        int col = (int)(i % (size_t)cols);
+        int row = (int)(i / (size_t)cols);
+        float tx = pad_x + (float)col * (cell_w + gap);
+        float ty = pad_top + (float)row * (cell_h + gap);
+
+        hud_quad(rr, ortho, tx, ty + cell_h - label_h, cell_w, label_h, (RtsVec4f){0.02f, 0.05f, 0.11f, 0.94f});
+        hud_border_box(rr, ortho, tx, ty, cell_w, cell_h,
+                       (RtsVec4f){0.0f, 0.0f, 0.0f, 0.0f}, (RtsVec4f){0.24f, 0.90f, 1.0f, 0.86f});
+
+        char name_buf[64];
+        upper_trunc_copy(name_buf, sizeof(name_buf), bp->name, max_name_ch);
+        hud_text(rr, ortho, tx + 8.0f, ty + cell_h - label_h + 7.0f, name_scale,
+                 (RtsVec4f){0.96f, 0.98f, 1.0f, 1.0f}, name_buf);
+
+        char meta_raw[96];
+        snprintf(meta_raw, sizeof(meta_raw), "%.0fM | %u RM%s%s%s",
+                 bp->dimensions_m.x, bp->room_count,
+                 bp->has_holo_globe ? " | HOLO" : "",
+                 bp->has_escape_pod ? " | POD" : "",
+                 bp->can_orbit ? " | ORB" : "");
+        char meta_buf[64];
+        upper_trunc_copy(meta_buf, sizeof(meta_buf), meta_raw, max_meta_ch);
+        hud_text(rr, ortho, tx + 8.0f, ty + cell_h - label_h + (rows >= 4 ? 22.0f : 26.0f), meta_scale,
+                 (RtsVec4f){0.34f, 0.96f, 0.92f, 1.0f}, meta_buf);
+    }
+
+    /* Top Header & Bottom Footer Banners */
+    hud_border_box(rr, ortho, 16.0f, 10.0f, w - 32.0f, 46.0f,
+                   (RtsVec4f){0.03f, 0.06f, 0.13f, 0.86f}, (RtsVec4f){0.24f, 0.92f, 1.0f, 0.92f});
+    hud_text(rr, ortho, 28.0f, 18.0f, 1.35f, (RtsVec4f){0.94f, 0.98f, 1.0f, 1.0f}, cls_title);
+    char sub[128];
+    snprintf(sub, sizeof(sub), "SOLARIS RETRO-FUTURISM CATALOG | %zu / 76 UNIQUE .OBJ MESHES & MULTI-DECK INTERIORS | ZERO BAKED ASSETS", count);
+    hud_text(rr, ortho, 28.0f, 38.0f, 1.0f, (RtsVec4f){0.96f, 0.80f, 0.36f, 1.0f}, sub);
+
+    hud_border_box(rr, ortho, 16.0f, h - 38.0f, w - 32.0f, 28.0f,
+                   (RtsVec4f){0.03f, 0.06f, 0.13f, 0.86f}, (RtsVec4f){0.96f, 0.78f, 0.34f, 0.86f});
+    hud_text(rr, ortho, 28.0f, h - 29.0f, 1.05f, (RtsVec4f){0.86f, 0.96f, 1.0f, 1.0f},
+             "EVERY CONSTRUCT LOADS ITS DEDICATED EXTERNAL ASSETS/MODELS/<ID>.OBJ VIA VFS AND HYDRATES MULTI-DECK INTERIORS FROM LUA");
+
+    rr->gfx.end_frame(rr->gfx.state);
+}
+
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s) {
     if (!rr || !rr->initialized || !world) return;
     float aspect = (float)rr->width / (float)(rr->height > 0 ? rr->height : 1);
-    RtsMat4f proj = rts_mat4_perspective((float)(60.0 * RTS_DEG2RAD), aspect, 0.2f, 2000.0f);
+    RtsMat4f proj = rts_mat4_perspective((float)(62.0 * RTS_DEG2RAD), aspect, 0.2f, 3500.0f);
     RtsVec3f sun = {0.62f, 0.36f, -0.70f};
     RtsVec3f light = {0.58f, 0.78f, 0.38f};
+    RtsQuatd idq = rts_quat_identity();
 
-    RtsVec3d cam_world = rts_v3d(0.0, 0.0, 0.0);
+    RtsVec3d cam_world = rts_v3d(0.0, world->planet.radius_m, 0.0);
     rts_interior_local_to_world(&world->interiors, world->commander.frame_id, world->commander.local_pos, &cam_world);
+    double alt_m = rts_v3d_len(cam_world) - world->planet.radius_m;
+    if (alt_m < 0.0) alt_m = 0.0;
+    bool in_orbit = (alt_m > 80000.0);
+
     RtsVec3f fwd = {
         (float)(sin(world->commander.yaw_rad) * cos(world->commander.pitch_rad)),
         (float)(sin(world->commander.pitch_rad)),
@@ -1030,32 +1291,169 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
     };
     RtsMat4f vp = rts_mat4_mul(proj, rts_mat4_look_at((RtsVec3f){0, 0, 0}, fwd, (RtsVec3f){0, 1, 0}));
     rr->cur_cam_pos = (RtsVec3f){0, 0, 0};
-    rr->cur_fog_color = (RtsVec4f){0.24f, 0.36f, 0.48f, 0.50f};
+    rr->cur_fog_color = in_orbit ? (RtsVec4f){0.04f, 0.09f, 0.18f, 0.16f} : (RtsVec4f){0.22f, 0.34f, 0.46f, 0.48f};
 
-    rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.04f, 0.08f, 0.18f, 1.0f});
-    draw_sky_dome(rr, vp, (RtsVec3f){0, 0, 0}, sun, 0.0f, time_s);
+    rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height,
+                        in_orbit ? (RtsVec4f){0.02f, 0.02f, 0.06f, 1.0f} : (RtsVec4f){0.04f, 0.09f, 0.18f, 1.0f});
+    draw_sky_dome(rr, vp, (RtsVec3f){0, 0, 0}, sun, in_orbit ? 1.0f : 0.0f, time_s);
 
+    /* Surface terrain apron when near planetary surface, or illuminated Helios Prime limb when in LEO orbit */
+    if (!in_orbit) {
+        RtsVec3f ground_rel = rts_v3d_relative_f(rts_v3d(0.0, world->planet.radius_m - 0.5, 0.0), cam_world);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_terrain, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(idq, ground_rel, (RtsVec3f){1.2f, 1.0f, 1.2f}),
+                  (RtsVec4f){0.86f, 0.90f, 0.96f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+    } else {
+        RtsQuatd orb_rot = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.98),
+                                        rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 1.35 + time_s * 0.01));
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_planet_surface, vp,
+                  rts_mat4_from_quat_trs(orb_rot, (RtsVec3f){-70.0f, -255.0f, -95.0f}, (RtsVec3f){235.0f, 235.0f, 235.0f}),
+                  (RtsVec4f){0.82f, 0.90f, 0.98f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+    }
+
+    /* Render Hydrated Enterable Interior Architecture & Physical 3D Consoles when inside a construct */
+    bool inside_construct = (world->commander.frame_id != world->planet_frame_id &&
+                             world->commander.occupied_entity_id != 0u);
+    if (inside_construct) {
+        RtsVec3d fpos = rts_v3d(0, 0, 0);
+        RtsQuatd frot = idq;
+        rts_interior_frame_world_pose(&world->interiors, world->commander.frame_id, &fpos, &frot);
+        double cmd_deck_y = floor(world->commander.local_pos.y / 3.8) * 3.8;
+
+        for (size_t r = 0; r < world->interiors.room_count; ++r) {
+            const RtsInteriorRoom *rm = &world->interiors.rooms[r];
+            if (!rm->active || rm->frame_id != world->commander.frame_id) continue;
+            if (fabs(rm->local_bounds.min.y - cmd_deck_y) > 1.8) continue;
+            double cx = 0.5 * (rm->local_bounds.min.x + rm->local_bounds.max.x);
+            double cz = 0.5 * (rm->local_bounds.min.z + rm->local_bounds.max.z);
+            double rw = rm->local_bounds.max.x - rm->local_bounds.min.x;
+            double rl = rm->local_bounds.max.z - rm->local_bounds.min.z;
+            RtsVec3d floor_w;
+            rts_interior_local_to_world(&world->interiors, rm->frame_id, rts_v3d(cx, rm->local_bounds.min.y - 0.15, cz), &floor_w);
+            RtsVec3f frel = rts_v3d_relative_f(floor_w, cam_world);
+            draw_box(rr, vp, frel, (RtsVec3f){(float)rw, 0.30f, (float)rl}, frot, rr->tex_deck_floor,
+                     (RtsVec4f){0.88f, 0.94f, 1.0f, 1.0f}, light, time_s);
+
+            RtsVec3d arch_w;
+            rts_interior_local_to_world(&world->interiors, rm->frame_id, rts_v3d(cx, rm->local_bounds.min.y, cz), &arch_w);
+            RtsVec3f arel = rts_v3d_relative_f(arch_w, cam_world);
+            float asc_x = rts_clampf((float)rw / 16.0f, 0.55f, 1.35f);
+            draw_mesh(rr, rr->sh_mesh, rr->mesh_arch, rr->tex_hull_blue, vp,
+                      rts_mat4_from_quat_trs(frot, arel, (RtsVec3f){asc_x, 0.92f, 1.0f}),
+                      (RtsVec4f){0.86f, 0.92f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        }
+
+        /* Physical Interactive Consoles (Holo-Globe, Factory Terminal, Pilot Seat, Escape Pod, Gunner) */
+        for (size_t c = 0; c < world->interiors.console_count; ++c) {
+            const RtsConsoleStation *cs = &world->interiors.consoles[c];
+            if (!cs->active || cs->frame_id != world->commander.frame_id) continue;
+            RtsVec3d cw;
+            rts_interior_local_to_world(&world->interiors, cs->frame_id, cs->local_pos, &cw);
+            RtsVec3f crel = rts_v3d_relative_f(cw, cam_world);
+
+            if (cs->type == RTS_CONSOLE_HOLO_GLOBE) {
+                RtsQuatd spin = rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 0.45);
+                draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_hull_blue, vp,
+                          rts_mat4_from_quat_trs(frot, (RtsVec3f){crel.x, crel.y - 0.85f, crel.z}, (RtsVec3f){1.65f, 0.45f, 1.65f}),
+                          (RtsVec4f){0.42f, 0.56f, 0.76f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+                draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_planet_surface, vp,
+                          rts_mat4_from_quat_trs(spin, (RtsVec3f){crel.x, crel.y + 0.55f, crel.z}, (RtsVec3f){0.92f, 0.92f, 0.92f}),
+                          (RtsVec4f){0.55f, 0.96f, 1.0f, 0.92f}, light, time_s, true, false, true, false, RTS_DRAW_TRIANGLES);
+                draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                          rts_mat4_from_quat_trs(spin, (RtsVec3f){crel.x, crel.y + 0.55f, crel.z}, (RtsVec3f){1.02f, 1.02f, 1.02f}),
+                          (RtsVec4f){0.22f, 0.96f, 1.0f, 0.50f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+                draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                          rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.36), (RtsVec3f){crel.x, crel.y + 0.55f, crel.z}, (RtsVec3f){1.42f, 1.42f, 1.42f}),
+                          (RtsVec4f){1.0f, 0.84f, 0.30f, 0.96f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+            } else {
+                RtsVec4f glow = (cs->type == RTS_CONSOLE_ESCAPE_POD) ? (RtsVec4f){0.28f, 1.0f, 0.74f, 1.0f}
+                              : ((cs->type == RTS_CONSOLE_FACTORY_TERMINAL) ? (RtsVec4f){1.0f, 0.82f, 0.32f, 1.0f}
+                              : (RtsVec4f){0.28f, 0.94f, 1.0f, 1.0f});
+                draw_box(rr, vp, (RtsVec3f){crel.x, crel.y - 0.35f, crel.z}, (RtsVec3f){1.3f, 1.1f, 0.8f}, frot,
+                         rr->tex_crt_console, glow, light, time_s);
+            }
+        }
+
+        /* Crew officers standing at posts inside the War Room / Bridge */
+        RtsVec3d crw_w;
+        rts_interior_local_to_world(&world->interiors, world->commander.frame_id, rts_v3d(-3.2, 0.0, -4.0), &crw_w);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 0.6), rts_v3d_relative_f(crw_w, cam_world), (RtsVec3f){1.05f, 1.05f, 1.05f}),
+                  (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+    }
+
+    /* Render Every Live World Construct Using Its Own Dedicated Unique Sculpted .OBJ Mesh! */
     for (size_t i = 0; i < world->entity_count; ++i) {
         const RtsEntity *e = &world->entities[i];
         if (!e->active) continue;
+        if (inside_construct && e->id == world->commander.occupied_entity_id) continue;
+
         RtsVec3f rel = rts_v3d_relative_f(e->pos, cam_world);
-        if (rel.x * rel.x + rel.y * rel.y + rel.z * rel.z > 1800.0f * 1800.0f) continue;
-        RtsGfxHandle mesh = rr->mesh_citadel;
-        if (e->construct_class == RTS_CLASS_GROUND_VEHICLE) mesh = rr->mesh_tank;
-        else if (e->construct_class == RTS_CLASS_NAVAL_SHIP) mesh = rr->mesh_carrier;
-        else if (e->construct_class == RTS_CLASS_AIRCRAFT) mesh = rr->mesh_dropship;
-        else if (e->construct_class == RTS_CLASS_SPACECRAFT) mesh = rr->mesh_dreadnought;
-        else if (e->construct_class == RTS_CLASS_SPACE_STATION) mesh = rr->mesh_shipyard;
+        if (rel.x * rel.x + rel.y * rel.y + rel.z * rel.z > 3200.0f * 3200.0f) continue;
+
+        const RtsConstructBlueprint *bp = rts_world_find_blueprint(world, e->blueprint_id);
+        const RtsMeshCacheEntry *me = bp ? rts_renderer_get_mesh_entry(rr, bp->mesh_path) : NULL;
+        RtsGfxHandle mesh = me ? me->handle : rr->mesh_citadel;
+        float sc = 4.0f;
+        if (me) {
+            float target_len = fmaxf(e->dimensions_m.x, fmaxf(e->dimensions_m.y, e->dimensions_m.z));
+            sc = rts_clampf((target_len * 0.26f) / me->bounds_radius, 1.4f, 14.0f);
+        }
         RtsGfxHandle tex = (e->faction_id == 2) ? rr->tex_hull_red : rr->tex_hull_blue;
-        RtsMat4f model = rts_mat4_from_quat_trs(e->rot, rel, (RtsVec3f){3.0f, 3.0f, 3.0f});
-        draw_mesh(rr, rr->sh_mesh, mesh, tex, vp, model, (RtsVec4f){1,1,1,1}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        RtsMat4f model = rts_mat4_from_quat_trs(e->rot, rel, (RtsVec3f){sc, sc, sc});
+        draw_mesh(rr, rr->sh_mesh, mesh, tex, vp, model, (RtsVec4f){1, 1, 1, 1}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
     }
 
-    render_hud_common(rr, world, input,
-                      "1STPRTS LIVE FIRST-PERSON COMMANDER VIEW",
-                      "WASD: WALK/PILOT | TAB: WRIST-PAD | E: INTERACT | 1-9: SHOWCASE SCENES",
-                      "LIVE SIMULATION ACTIVE - FLOATING-ORIGIN 64-BIT CAMERA RELATIVE TO COMMANDER.",
-                      false);
+    /* Seamless Sandbox RTS HUD: Location/Room/Altitude + Resources + Holo-Globe Command Bar + Toast */
+    float w = (float)rr->width, h = (float)rr->height;
+    RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+
+    const RtsEntity *occ = rts_world_get_entity_const(world, world->commander.occupied_entity_id);
+    const RtsInteriorRoom *room = rts_interior_find_room_at(&world->interiors, world->commander.frame_id, world->commander.local_pos);
+    const RtsConsoleStation *near_c = rts_interior_find_nearest_console(&world->interiors, world->commander.frame_id, world->commander.local_pos);
+
+    char loc_banner[256];
+    if (occ && room) {
+        snprintf(loc_banner, sizeof(loc_banner), "%.48s - %.36s [ALT %.1fKM]", occ->name, room->name, alt_m / 1000.0);
+    } else if (occ) {
+        snprintf(loc_banner, sizeof(loc_banner), "%.48s [INTERIOR DECK | ALT %.1fKM]", occ->name, alt_m / 1000.0);
+    } else {
+        snprintf(loc_banner, sizeof(loc_banner), "HELIOS PRIME SURFACE [ALT %.1fKM]", alt_m / 1000.0);
+    }
+    char loc_upper[128];
+    upper_trunc_copy(loc_upper, sizeof(loc_upper), loc_banner, 84);
+
+    char sub_line[220];
+    snprintf(sub_line, sizeof(sub_line), "%.64s | ORE:%.0f FUEL:%.0f PWR:%.0fMW | ENTITIES:%zu",
+             rr->live_mode_tag[0] ? rr->live_mode_tag : "SEAMLESS SANDBOX RTS",
+             world->resources_ore, world->resources_fuel, world->resources_power, world->entity_count);
+
+    /* Holo-Globe Active Command Menu or Console Interaction Prompt */
+    if (world->commander.at_holo_globe) {
+        hud_border_box(rr, ortho, w * 0.5f - 360.0f, h - 134.0f, 720.0f, 72.0f,
+                       (RtsVec4f){0.03f, 0.08f, 0.16f, 0.90f}, (RtsVec4f){0.26f, 0.96f, 1.0f, 0.98f});
+        hud_text(rr, ortho, w * 0.5f - 344.0f, h - 122.0f, 1.15f, (RtsVec4f){1.0f, 0.84f, 0.30f, 1.0f},
+                 "HOLO-GLOBE COMMAND LINK ACTIVE [PRESS E TO STEP BACK]");
+        hud_text(rr, ortho, w * 0.5f - 344.0f, h - 94.0f, 1.04f, (RtsVec4f){0.94f, 0.98f, 1.0f, 1.0f},
+                 "[1] QUEUE TANK  [2] ATTACK RAIDER  [3] ASTROGATOR 400KM ORBIT  [4] BOARD DREADNOUGHT");
+    } else if (rr->live_prompt[0] != '\0' || near_c != NULL) {
+        char pbuf[160];
+        if (rr->live_prompt[0] != '\0') {
+            snprintf(pbuf, sizeof(pbuf), "%.120s", rr->live_prompt);
+        } else {
+            snprintf(pbuf, sizeof(pbuf), "PRESS [E] TO ACCESS %.64s", near_c->name);
+        }
+        char pup[128];
+        upper_trunc_copy(pup, sizeof(pup), pbuf, 70);
+        hud_border_box(rr, ortho, w * 0.5f - 240.0f, h - 104.0f, 480.0f, 36.0f,
+                       (RtsVec4f){0.03f, 0.08f, 0.16f, 0.88f}, (RtsVec4f){1.0f, 0.84f, 0.30f, 0.96f});
+        hud_text(rr, ortho, w * 0.5f - 224.0f, h - 91.0f, 1.12f, (RtsVec4f){1.0f, 0.92f, 0.44f, 1.0f}, pup);
+    }
+
+    const char *toast = rr->live_toast[0]
+        ? rr->live_toast
+        : "WASD: WALK/PILOT | E: INTERACT/BOARD | G: ASTROGATOR 400KM ORBIT | F5/F9: SAVE/LOAD | L: COMBAT | 1-9: SCENES";
+    render_hud_common(rr, world, input, loc_upper, sub_line, toast, false);
     rr->gfx.end_frame(rr->gfx.state);
 }
 

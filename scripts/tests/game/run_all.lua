@@ -145,4 +145,17 @@ expect(session.restore_world_snapshot(snap), "Scenario 18: Snapshot deserializat
 local tank_after = engine.world.get_entity(ACTIVE_MISSION.tank)
 expect(tank_after ~= nil and math.abs(tank_after.x - tank_before.x) < 1e-6, "Scenario 18: Restored entity position diverged")
 
-print("[Automated Game Tests] ALL 18 END-TO-END SCENARIOS PASSED!")
+-- Scenario 19: All 76 Constructs Unique External Sculpted .OBJ Models + Tailored Multi-Deck Interiors
+local registry = require("units.registry")
+local interiors = require("interiors.catalog")
+expect(interiors.count() == 76, "Scenario 19: Expected 76 interior catalog specs")
+for i = 1, #registry.all do
+    local bp = registry.all[i]
+    expect(engine.vfs.exists("assets", bp.mesh), "Scenario 19: Missing external .obj via VFS: " .. tostring(bp.mesh))
+    local layout = interiors.build_layout(bp)
+    expect(layout ~= nil and #layout.rooms >= 1 and #layout.consoles >= 1, "Scenario 19: Invalid interior for " .. bp.id)
+end
+local rm_c, pt_c, cn_c = engine.interior.counts()
+expect(rm_c >= 20 and pt_c >= 6 and cn_c >= 10, "Scenario 19: Live hydrated multi-deck interiors missing")
+
+print("[Automated Game Tests] ALL 19 END-TO-END SCENARIOS PASSED!")

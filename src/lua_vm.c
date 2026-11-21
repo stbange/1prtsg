@@ -349,6 +349,57 @@ static int l_world_eval_crew_lod(lua_State *L) {
 }
 
 /* --- engine.interior --- */
+static int l_interior_add_room(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    RtsFrameId fid = (RtsFrameId)luaL_checkinteger(L, 1);
+    const char *name = luaL_checkstring(L, 2);
+    RtsAabb b = {
+        rts_v3d(luaL_checknumber(L, 3), luaL_checknumber(L, 4), luaL_checknumber(L, 5)),
+        rts_v3d(luaL_checknumber(L, 6), luaL_checknumber(L, 7), luaL_checknumber(L, 8))
+    };
+    bool press = lua_isnoneornil(L, 9) ? true : (lua_toboolean(L, 9) != 0);
+    RtsVec3f col = {0.72f, 0.88f, 1.0f};
+    uint32_t rid = rts_interior_add_room(&vm->world->interiors, fid, name, b, col, press);
+    lua_pushinteger(L, (lua_Integer)rid);
+    return 1;
+}
+
+static int l_interior_add_portal(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    RtsFrameId f_from = (RtsFrameId)luaL_checkinteger(L, 1);
+    RtsFrameId f_to = (RtsFrameId)luaL_checkinteger(L, 2);
+    const char *name = luaL_checkstring(L, 3);
+    RtsAabb box = {
+        rts_v3d(luaL_checknumber(L, 4), luaL_checknumber(L, 5), luaL_checknumber(L, 6)),
+        rts_v3d(luaL_checknumber(L, 7), luaL_checknumber(L, 8), luaL_checknumber(L, 9))
+    };
+    RtsVec3d dst = rts_v3d(luaL_checknumber(L, 10), luaL_checknumber(L, 11), luaL_checknumber(L, 12));
+    uint32_t pid = rts_interior_add_portal(&vm->world->interiors, f_from, f_to, name, box, dst, true);
+    lua_pushinteger(L, (lua_Integer)pid);
+    return 1;
+}
+
+static int l_interior_add_console(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    RtsFrameId fid = (RtsFrameId)luaL_checkinteger(L, 1);
+    const char *name = luaL_checkstring(L, 2);
+    RtsConsoleType ctype = (RtsConsoleType)luaL_checkinteger(L, 3);
+    RtsVec3d pos = rts_v3d(luaL_checknumber(L, 4), luaL_checknumber(L, 5), luaL_checknumber(L, 6));
+    double radius = luaL_optnumber(L, 7, 3.0);
+    uint32_t owner_id = (uint32_t)luaL_optinteger(L, 8, 0);
+    uint32_t cid = rts_interior_add_console(&vm->world->interiors, fid, name, ctype, pos, radius, owner_id);
+    lua_pushinteger(L, (lua_Integer)cid);
+    return 1;
+}
+
+static int l_interior_counts(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    lua_pushinteger(L, (lua_Integer)vm->world->interiors.room_count);
+    lua_pushinteger(L, (lua_Integer)vm->world->interiors.portal_count);
+    lua_pushinteger(L, (lua_Integer)vm->world->interiors.console_count);
+    return 3;
+}
+
 static int l_interior_add_portal_and_transfer(lua_State *L) {
     RtsLuaVm *vm = get_vm(L);
     RtsFrameId f_from = (RtsFrameId)luaL_checkinteger(L, 1);
@@ -793,6 +844,10 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
         {NULL, NULL}
     };
     static const luaL_Reg interior_funcs[] = {
+        {"add_room", l_interior_add_room},
+        {"add_portal", l_interior_add_portal},
+        {"add_console", l_interior_add_console},
+        {"counts", l_interior_counts},
         {"add_portal_and_transfer", l_interior_add_portal_and_transfer},
         {NULL, NULL}
     };

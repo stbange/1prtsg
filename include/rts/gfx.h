@@ -108,6 +108,16 @@ typedef enum RtsShowcaseScene {
     RTS_SCENE_COUNT = 9
 } RtsShowcaseScene;
 
+#define RTS_MESH_CACHE_MAX 96
+
+typedef struct RtsMeshCacheEntry {
+    char rel_path[128];
+    RtsGfxHandle handle;
+    RtsVec3f bounds_min;
+    RtsVec3f bounds_max;
+    float bounds_radius;
+} RtsMeshCacheEntry;
+
 typedef struct RtsRetroRenderer {
     RtsGfxBackend gfx;
     const RtsVfs *vfs;
@@ -146,6 +156,13 @@ typedef struct RtsRetroRenderer {
     RtsGfxHandle mesh_dynamic_2d;
     RtsGfxHandle mesh_dynamic_3d;
 
+    RtsMeshCacheEntry mesh_cache[RTS_MESH_CACHE_MAX];
+    size_t mesh_cache_count;
+
+    char live_mode_tag[96];
+    char live_prompt[128];
+    char live_toast[160];
+
     RtsVec3f cur_cam_pos;
     RtsVec4f cur_fog_color;
     bool initialized;
@@ -155,7 +172,11 @@ struct RtsTacticalSim;
 
 bool rts_renderer_init(RtsRetroRenderer *rr, RtsGfxBackend gfx, const RtsVfs *vfs, int width, int height);
 void rts_renderer_shutdown(RtsRetroRenderer *rr);
+RtsGfxHandle rts_renderer_get_mesh(RtsRetroRenderer *rr, const char *rel_path);
+const RtsMeshCacheEntry *rts_renderer_get_mesh_entry(RtsRetroRenderer *rr, const char *rel_path);
+void rts_renderer_set_live_status(RtsRetroRenderer *rr, const char *mode_tag, const char *prompt, const char *toast);
 void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsShowcaseScene scene, float time_s);
+void rts_renderer_render_roster_class(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsConstructClass cls, float time_s);
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s);
 void rts_renderer_render_tactical(RtsRetroRenderer *rr, const struct RtsTacticalSim *sim, const RtsWorld *world, const RtsInputRouter *input, float time_s);
 void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, const RtsXrFrameState *xr, float time_s);

@@ -8,9 +8,9 @@
 #include <stdint.h>
 
 #define RTS_MAX_FRAMES 128
-#define RTS_MAX_ROOMS 256
-#define RTS_MAX_PORTALS 128
-#define RTS_MAX_CONSOLES 128
+#define RTS_MAX_ROOMS 384
+#define RTS_MAX_PORTALS 192
+#define RTS_MAX_CONSOLES 192
 
 typedef uint32_t RtsFrameId;
 #define RTS_FRAME_INVALID 0u

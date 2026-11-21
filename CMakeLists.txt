@@ -4,7 +4,12 @@ project(1prtsg VERSION 0.1.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
+if(EMSCRIPTEN)
+    # SDL3 uses EM_ASM in SDL_assert.c which requires GNU extensions under emcc
+    set(CMAKE_C_EXTENSIONS ON)
+else()
+    set(CMAKE_C_EXTENSIONS OFF)
+endif()
 
 option(ENABLE_COVERAGE "Enable GCC/Clang gcov coverage instrumentation" OFF)
 option(ENABLE_SANITIZERS "Enable ASan and UBSan on supported compilers" OFF)
@@ -148,7 +153,8 @@ endif()
 # ---------------------------------------------------------------------------
 function(rts_apply_strict_flags target_name)
     if(MSVC)
-        target_compile_options(${target_name} PRIVATE /W4 /WX)
+        target_compile_definitions(${target_name} PRIVATE _CRT_SECURE_NO_WARNINGS)
+        target_compile_options(${target_name} PRIVATE /W4 /WX /wd4100 /wd4244 /wd4267)
     else()
         target_compile_options(${target_name} PRIVATE -Wall -Wextra -Werror -Wpedantic)
     endif()
@@ -248,8 +254,8 @@ if(EMSCRIPTEN)
         "-sFULL_ES3=1"
         "-sALLOW_MEMORY_GROWTH=1"
         "-sFORCE_FILESYSTEM=1"
-        "-sEXPORTED_FUNCTIONS=['_main','_rts_web_notify_touch_device','_rts_webxr_on_session_state','_rts_webxr_on_frame']"
-        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS']"
+        "-sEXPORTED_FUNCTIONS=['_main','_rts_web_notify_touch_device','_rts_web_is_touch_device','_rts_webxr_on_session_state','_rts_webxr_on_frame']"
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','callMain']"
     )
 endif()
 
