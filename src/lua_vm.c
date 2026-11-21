@@ -421,6 +421,155 @@ static int l_voxel_test_mesh(lua_State *L) {
     return 1;
 }
 
+/* --- engine.audio --- */
+static int l_audio_play_3d(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    if (!vm->audio) {
+        lua_pushnumber(L, 0.0);
+        lua_pushboolean(L, 0);
+        return 2;
+    }
+    const char *wav = luaL_checkstring(L, 1);
+    double x = luaL_checknumber(L, 2);
+    double y = luaL_checknumber(L, 3);
+    double z = luaL_checknumber(L, 4);
+    RtsAudioChannel ch = (RtsAudioChannel)luaL_optinteger(L, 5, RTS_AUD_EXTERIOR_AIRBORNE);
+    float gain = (float)luaL_optnumber(L, 6, 1.0);
+    float max_d = (float)luaL_optnumber(L, 7, 300.0);
+    RtsAudioVoice v = rts_audio_play_3d(vm->audio, &vm->world->planet, wav, rts_v3d(x, y, z), ch, gain, max_d);
+    lua_pushnumber(L, v.gain);
+    lua_pushboolean(L, v.audible);
+    return 2;
+}
+
+static int l_audio_set_listener(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    if (!vm->audio) return 0;
+    double x = luaL_checknumber(L, 1);
+    double y = luaL_checknumber(L, 2);
+    double z = luaL_checknumber(L, 3);
+    double alt = luaL_optnumber(L, 4, 0.0);
+    float muffle = (float)luaL_optnumber(L, 5, 0.0);
+    rts_audio_set_listener(vm->audio, rts_v3d(x, y, z), rts_v3d(1.0, 0.0, 0.0), alt, muffle);
+    return 0;
+}
+
+/* --- engine.economy --- */
+static int l_eco_queue_build(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    if (!vm->economy) {
+        lua_pushinteger(L, 0);
+        return 1;
+    }
+    uint32_t prod = (uint32_t)luaL_checkinteger(L, 1);
+    const char *bp = luaL_checkstring(L, 2);
+    uint32_t jid = rts_economy_queue_build(vm->economy, vm->world, prod, bp);
+    lua_pushinteger(L, (lua_Integer)jid);
+    return 1;
+}
+
+static int l_eco_step(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    if (!vm->economy) {
+        lua_pushinteger(L, 0);
+        return 1;
+    }
+    double dt = luaL_checknumber(L, 1);
+    int steps = (int)luaL_optinteger(L, 2, 1);
+    size_t done = 0;
+    for (int i = 0; i < steps; ++i) {
+        done += rts_economy_step(vm->economy, vm->world, dt);
+    }
+    lua_pushinteger(L, (lua_Integer)done);
+    return 1;
+}
+
+static int l_eco_job_spawned(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t jid = (uint32_t)luaL_checkinteger(L, 1);
+    const RtsProductionJob *j = vm->economy ? rts_economy_get_job(vm->economy, jid) : NULL;
+    lua_pushinteger(L, j ? (lua_Integer)j->spawned_entity_id : 0);
+    return 1;
+}
+
+static int l_eco_ledger(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint8_t fid = (uint8_t)luaL_optinteger(L, 1, 1);
+    if (!vm->economy || fid >= RTS_MAX_FACTIONS) {
+        lua_pushnil(L);
+        return 1;
+    }
+    const RtsFactionLedger *led = &vm->economy->ledgers[fid];
+    lua_newtable(L);
+    lua_pushnumber(L, led->ore); lua_setfield(L, -2, "ore");
+    lua_pushnumber(L, led->fuel); lua_setfield(L, -2, "fuel");
+    lua_pushnumber(L, led->power_produced); lua_setfield(L, -2, "power");
+    return 1;
+}
+
+/* --- engine.sensors --- */
+static int l_sensors_is_detected(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint8_t fac = (uint8_t)luaL_checkinteger(L, 1);
+    uint32_t tgt = (uint32_t)luaL_checkinteger(L, 2);
+    lua_pushboolean(L, rts_sensors_is_target_detected(vm->world, fac, tgt));
+    return 1;
+}
+
+static int l_sensors_is_comms_linked(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t hq = (uint32_t)luaL_checkinteger(L, 1);
+    uint32_t unit = (uint32_t)luaL_checkinteger(L, 2);
+    lua_pushboolean(L, rts_comms_is_entity_linked(vm->world, hq, unit));
+    return 1;
+}
+
+/* --- engine.control --- */
+static int l_ctrl_engage_pilot(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t cid = (uint32_t)luaL_checkinteger(L, 1);
+    lua_pushboolean(L, vm->controller ? rts_controller_engage_piloting(vm->controller, vm->world, cid) : 0);
+    return 1;
+}
+
+static int l_ctrl_release_pilot(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    if (vm->controller) rts_controller_release_piloting(vm->controller);
+    return 0;
+}
+
+static int l_ctrl_astrogator_ascent(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t cid = (uint32_t)luaL_checkinteger(L, 1);
+    double alt = luaL_checknumber(L, 2);
+    bool ok = vm->controller ? rts_astrogator_start_ascent(vm->controller, vm->world, cid, alt) : false;
+    lua_pushboolean(L, ok);
+    return 1;
+}
+
+static int l_ctrl_astrogator_reentry(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t cid = (uint32_t)luaL_checkinteger(L, 1);
+    bool ok = vm->controller ? rts_astrogator_start_reentry(vm->controller, vm->world, cid) : false;
+    lua_pushboolean(L, ok);
+    return 1;
+}
+
+static int l_ctrl_astrogator_step(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    double dt = luaL_checknumber(L, 1);
+    int steps = (int)luaL_optinteger(L, 2, 1);
+    RtsAutopilotPhase ph = RTS_AUTO_IDLE;
+    if (vm->controller) {
+        for (int i = 0; i < steps; ++i) {
+            ph = rts_astrogator_step(vm->controller, vm->world, dt);
+        }
+    }
+    lua_pushinteger(L, (lua_Integer)ph);
+    lua_pushnumber(L, vm->controller ? vm->controller->astrogator.peak_reentry_heat : 0.0);
+    return 2;
+}
+
 static void register_subtable(lua_State *L, const char *name, const luaL_Reg *funcs) {
     lua_newtable(L);
     luaL_setfuncs(L, funcs, 0);
@@ -520,6 +669,31 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
         {"test_mesh", l_voxel_test_mesh},
         {NULL, NULL}
     };
+    static const luaL_Reg audio_funcs[] = {
+        {"play_3d", l_audio_play_3d},
+        {"set_listener", l_audio_set_listener},
+        {NULL, NULL}
+    };
+    static const luaL_Reg eco_funcs[] = {
+        {"queue_build", l_eco_queue_build},
+        {"step", l_eco_step},
+        {"job_spawned", l_eco_job_spawned},
+        {"ledger", l_eco_ledger},
+        {NULL, NULL}
+    };
+    static const luaL_Reg sensor_funcs[] = {
+        {"is_detected", l_sensors_is_detected},
+        {"is_comms_linked", l_sensors_is_comms_linked},
+        {NULL, NULL}
+    };
+    static const luaL_Reg ctrl_funcs[] = {
+        {"engage_pilot", l_ctrl_engage_pilot},
+        {"release_pilot", l_ctrl_release_pilot},
+        {"astrogator_ascent", l_ctrl_astrogator_ascent},
+        {"astrogator_reentry", l_ctrl_astrogator_reentry},
+        {"astrogator_step", l_ctrl_astrogator_step},
+        {NULL, NULL}
+    };
 
     register_subtable(L, "vfs", vfs_funcs);
     register_subtable(L, "planet", planet_funcs);
@@ -528,8 +702,19 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
     register_subtable(L, "interior", interior_funcs);
     register_subtable(L, "input", input_funcs);
     register_subtable(L, "voxel", voxel_funcs);
+    register_subtable(L, "audio", audio_funcs);
+    register_subtable(L, "economy", eco_funcs);
+    register_subtable(L, "sensors", sensor_funcs);
+    register_subtable(L, "control", ctrl_funcs);
     lua_setglobal(L, "engine");
     return true;
+}
+
+void rts_lua_attach_phase2(RtsLuaVm *vm, RtsAudioEngine *audio, RtsEconomySystem *economy, RtsCommanderController *controller) {
+    if (!vm) return;
+    vm->audio = audio;
+    vm->economy = economy;
+    vm->controller = controller;
 }
 
 void rts_lua_shutdown(RtsLuaVm *vm) {

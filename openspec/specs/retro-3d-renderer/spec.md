@@ -20,3 +20,11 @@ The renderer SHALL render camera-relative floating-origin 3D meshes with nearest
 - **GIVEN** a camera inside a War Room looking at a 3D Planetary Holo-Globe with exterior structures visible through viewports
 - **WHEN** the renderer composes a frame
 - **THEN** opaque meshes, sprites, translucent shields, glowing orbital wireframe tracks, and 2D HUD elements render in proper depth order
+
+### Requirement: Live World, Naval Carrier and Foundry Rendering
+The retro 3D renderer SHALL support rendering live world entities from the Commander's camera, a Tactical Wrist-Pad diegetic HUD panel, a 1:1 Naval Fleet Carrier flight deck on curved ocean, and a 1:1 Vehicle Foundry interior assembly hall.
+
+#### Scenario: Rendering Naval Carrier flight deck and Foundry interior
+- **GIVEN** external Carrier, Foundry, and Ocean assets loaded via VFS
+- **WHEN** the Naval Carrier Flight Deck and Vehicle Foundry Assembly Hall views render via OpenGL or Null backend
+- **THEN** frames complete with zero GL errors and display the 1:1 structures, crew, and Tactical Wrist-Pad overlay

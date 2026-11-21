@@ -175,6 +175,8 @@ bool rts_renderer_init(RtsRetroRenderer *rr, RtsGfxBackend gfx, const RtsVfs *vf
     rr->tex_hull_red       = load_png_tex(rr, "textures/hull_red.png");
     rr->tex_deck_floor     = load_png_tex(rr, "textures/deck_floor.png");
     rr->tex_planet_surface = load_png_tex(rr, "textures/planet_surface.png");
+    rr->tex_ocean          = load_png_tex(rr, "textures/ocean_wave.png");
+    rr->tex_crt_console    = load_png_tex(rr, "textures/crt_console.png");
     rr->tex_crew_sprite    = load_png_tex(rr, "sprites/crew_8dir.png");
     rr->tex_font_atlas     = load_png_tex(rr, "fonts/retro_font.png");
 
@@ -188,6 +190,7 @@ bool rts_renderer_init(RtsRetroRenderer *rr, RtsGfxBackend gfx, const RtsVfs *vf
     rr->mesh_dreadnought = load_obj_mesh(rr, "models/dreadnought.obj", (RtsVec3f){1.0f, 1.0f, 1.0f});
     rr->mesh_shipyard    = load_obj_mesh(rr, "models/shipyard.obj",    (RtsVec3f){1.0f, 1.0f, 1.0f});
     rr->mesh_starfighter = load_obj_mesh(rr, "models/starfighter.obj", (RtsVec3f){1.0f, 1.0f, 1.0f});
+    rr->mesh_carrier     = load_obj_mesh(rr, "models/carrier.obj",     (RtsVec3f){1.0f, 1.0f, 1.0f});
     rr->mesh_crew3d      = load_obj_mesh(rr, "models/crew_3d.obj",     (RtsVec3f){1.0f, 1.0f, 1.0f});
     rr->mesh_voxel_sample = load_voxel_sample(rr, "voxels/bunker_module.vxl");
 
@@ -672,6 +675,117 @@ void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, cons
         return;
     }
 
+    if (scene == RTS_SCENE_NAVAL_CARRIER_DECK) {
+        rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.06f, 0.22f, 0.45f, 1.0f});
+        RtsVec3f cam = {-6.0f, 3.6f, 28.0f};
+        RtsMat4f vp = rts_mat4_mul(proj, rts_mat4_look_at(cam, (RtsVec3f){6.0f, 5.2f, -32.0f}, (RtsVec3f){0.0f, 1.0f, 0.0f}));
+
+        draw_starfield(rr, vp, cam, time_s);
+
+        /* Vast Curved Retro Ocean Horizon */
+        draw_box(rr, vp, (RtsVec3f){0.0f, -6.5f, -40.0f}, (RtsVec3f){520.0f, 2.0f, 520.0f}, idq, rr->tex_ocean, (RtsVec4f){0.92f, 0.96f, 1.0f, 1.0f}, light, time_s);
+
+        /* Standing 1:1 on the 340m Fleet Starfighter Carrier Flight Deck */
+        draw_box(rr, vp, (RtsVec3f){0.0f, -0.4f, -18.0f}, (RtsVec3f){42.0f, 0.8f, 145.0f}, idq, rr->tex_deck_floor, (RtsVec4f){0.92f, 0.95f, 1.0f, 1.0f}, light, time_s);
+        /* Starboard Island ATC Control Tower */
+        draw_box(rr, vp, (RtsVec3f){18.0f, 9.0f, -14.0f}, (RtsVec3f){10.0f, 18.0f, 28.0f}, idq, rr->tex_hull_blue, (RtsVec4f){0.90f, 0.95f, 1.0f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){18.0f, 20.5f, -14.0f}, (RtsVec3f){8.0f, 5.5f, 16.0f}, idq, rr->tex_crt_console, (RtsVec4f){0.75f, 0.95f, 1.0f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){18.0f, 29.0f, -14.0f}, (RtsVec3f){1.6f, 12.0f, 1.6f}, idq, rr->tex_hull_blue, (RtsVec4f){0.96f, 0.82f, 0.25f, 1.0f}, light, time_s);
+
+        /* Angular Starfighters staged & launching off the Carrier Flight Deck */
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_starfighter, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.15), (RtsVec3f){-8.0f, 1.6f, 4.0f}, (RtsVec3f){3.0f, 3.0f, 3.0f}),
+                  (RtsVec4f){1,1,1,1}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_starfighter, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), -0.1), (RtsVec3f){-4.0f, 9.0f, -38.0f}, (RtsVec3f){3.2f, 3.2f, 3.2f}),
+                  (RtsVec4f){1,1,1,1}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_dropship, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.35), (RtsVec3f){4.0f, 1.2f, -12.0f}, (RtsVec3f){3.2f, 3.2f, 3.2f}),
+                  (RtsVec4f){0.95f, 0.98f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+        /* Escort Naval Carrier & Crimson Raider on the Horizon */
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_carrier, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.18), (RtsVec3f){-68.0f, -4.5f, -72.0f}, (RtsVec3f){7.5f, 7.5f, 7.5f}),
+                  (RtsVec4f){0.92f, 0.96f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_dreadnought, rr->tex_hull_red, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 1.45), (RtsVec3f){64.0f, -3.5f, -110.0f}, (RtsVec3f){6.5f, 6.5f, 6.5f}),
+                  (RtsVec4f){1.0f, 0.78f, 0.75f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+        /* Deck Crew directing Starfighter launch (3D up close + 8-dir sprite down deck) */
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.8), (RtsVec3f){-1.5f, 0.0f, 14.0f}, (RtsVec3f){1.25f, 1.25f, 1.25f}),
+                  (RtsVec4f){1.0f, 0.92f, 0.45f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_billboard_sprite(rr, vp, (RtsVec3f){6.5f, 0.0f, 8.0f}, cam, 2.2f, 3.0f, 2, 8, rr->tex_crew_sprite, (RtsVec4f){1,1,1,1}, time_s);
+
+        /* Anti-Ship Plasma Volley & Shield Flash */
+        draw_plasma_beam(rr, vp, (RtsVec3f){52.0f, 2.5f, -96.0f}, (RtsVec3f){10.0f, 12.0f, -18.0f}, 0.65f, (RtsVec4f){1.0f, 0.24f, 0.18f, 1.0f}, time_s);
+        draw_plasma_beam(rr, vp, (RtsVec3f){-4.0f, 9.0f, -38.0f}, (RtsVec3f){54.0f, 1.5f, -102.0f}, 0.55f, (RtsVec4f){0.20f, 0.92f, 1.0f, 1.0f}, time_s);
+
+        render_hud_common(rr, world, input,
+                          "FLEET CARRIER 'VANGUARD' - 340M FLIGHT DECK",
+                          "OCEAN SECTOR 4 | COMMS RELAY: LINKED | SCRAMBLING STARFIGHTER WING",
+                          "ATC TOWER: INTERCEPTOR FLIGHT ALPHA AWAY! CRIMSON DESTROYER DETECTED ON HORIZON!",
+                          false);
+        rr->gfx.end_frame(rr->gfx.state);
+        return;
+    }
+
+    if (scene == RTS_SCENE_FOUNDRY_INTERIOR) {
+        rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.025f, 0.03f, 0.06f, 1.0f});
+        RtsVec3f cam = {-2.5f, 2.6f, 14.5f};
+        RtsMat4f vp = rts_mat4_mul(proj, rts_mat4_look_at(cam, (RtsVec3f){2.0f, 3.2f, -12.0f}, (RtsVec3f){0.0f, 1.0f, 0.0f}));
+
+        /* Cavernous 1:1 Vehicle Foundry Assembly Hall */
+        draw_box(rr, vp, (RtsVec3f){0.0f, -0.3f, 0.0f},   (RtsVec3f){36.0f, 0.6f, 44.0f}, idq, rr->tex_deck_floor, (RtsVec4f){0.88f, 0.92f, 1.0f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){0.0f, 16.5f, 0.0f},   (RtsVec3f){36.0f, 0.8f, 44.0f}, idq, rr->tex_hull_blue,  (RtsVec4f){0.42f, 0.50f, 0.68f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){-17.5f, 8.0f, 0.0f},  (RtsVec3f){1.0f, 16.5f, 44.0f}, idq, rr->tex_hull_blue,  (RtsVec4f){0.55f, 0.65f, 0.86f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){ 17.5f, 8.0f, 0.0f},  (RtsVec3f){1.0f, 16.5f, 44.0f}, idq, rr->tex_hull_blue,  (RtsVec4f){0.55f, 0.65f, 0.86f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){0.0f, 8.0f, -21.5f},  (RtsVec3f){36.0f, 16.5f, 1.0f}, idq, rr->tex_hull_blue,  (RtsVec4f){0.40f, 0.52f, 0.72f, 1.0f}, light, time_s);
+
+        /* Overhead Yellow Industrial Gantry Crane Beams */
+        draw_box(rr, vp, (RtsVec3f){0.0f, 12.6f, -4.0f},  (RtsVec3f){34.0f, 1.2f, 1.6f},  idq, rr->tex_hull_blue, (RtsVec4f){0.98f, 0.78f, 0.18f, 1.0f}, light, time_s);
+        draw_box(rr, vp, (RtsVec3f){2.0f, 9.2f, -4.0f},   (RtsVec3f){1.2f, 6.2f, 1.2f},   idq, rr->tex_hull_blue, (RtsVec4f){0.98f, 0.78f, 0.18f, 1.0f}, light, time_s);
+
+        /* 1:1 Scale Plasma Heavy Tank Being Welded on Assembly Bay Floor */
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_tank, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.45), (RtsVec3f){2.5f, 0.2f, -4.5f}, (RtsVec3f){3.6f, 3.6f, 3.6f}),
+                  (RtsVec4f){0.95f, 0.98f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        /* Welding plasma arc from overhead crane onto tank turret */
+        draw_plasma_beam(rr, vp, (RtsVec3f){2.0f, 6.2f, -4.0f}, (RtsVec3f){2.4f, 4.1f, -4.3f}, 0.22f, (RtsVec4f){0.35f, 0.95f, 1.0f, 1.0f}, time_s);
+
+        /* Foreman CRT Production Terminal & Engineer Crew */
+        draw_box(rr, vp, (RtsVec3f){6.8f, 1.2f, 6.2f}, (RtsVec3f){2.8f, 2.2f, 1.2f}, rts_quat_from_axis_angle(rts_v3d(0,1,0), -0.4), rr->tex_crt_console, (RtsVec4f){1,1,1,1}, light, time_s);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), -0.8), (RtsVec3f){5.2f, 0.0f, 4.8f}, (RtsVec3f){1.15f, 1.15f, 1.15f}),
+                  (RtsVec4f){1.0f, 0.92f, 0.55f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_crew3d, rr->tex_hull_blue, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.7), (RtsVec3f){-4.2f, 0.0f, 1.8f}, (RtsVec3f){1.15f, 1.15f, 1.15f}),
+                  (RtsVec4f){0.92f, 0.96f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+        /* Raised Diegetic Tactical Wrist-Pad on Left Forearm */
+        float w = (float)rr->width, h = (float)rr->height;
+        RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+        hud_border_box(rr, ortho, 26.0f, h - 300.0f, 360.0f, 230.0f,
+                       (RtsVec4f){0.02f, 0.08f, 0.14f, 0.92f}, (RtsVec4f){0.25f, 0.95f, 0.72f, 0.95f});
+        hud_text(rr, ortho, 40.0f, h - 284.0f, 1.35f, (RtsVec4f){0.35f, 1.0f, 0.75f, 1.0f}, "TACTICAL WRIST-PAD [COMMS: OK]");
+        hud_text(rr, ortho, 40.0f, h - 254.0f, 1.15f, (RtsVec4f){0.98f, 0.85f, 0.25f, 1.0f}, "PRODUCTION QUEUE:");
+        hud_text(rr, ortho, 40.0f, h - 230.0f, 1.10f, (RtsVec4f){0.90f, 0.96f, 1.0f, 1.0f}, "1. PLASMA HEAVY TANK  [78%]");
+        hud_text(rr, ortho, 40.0f, h - 208.0f, 1.10f, (RtsVec4f){0.75f, 0.88f, 1.0f, 1.0f}, "2. ARMORED APC        [QUEUED]");
+        hud_text(rr, ortho, 40.0f, h - 186.0f, 1.10f, (RtsVec4f){0.75f, 0.88f, 1.0f, 1.0f}, "3. MOBILE LANDSHIP    [QUEUED]");
+        hud_text(rr, ortho, 40.0f, h - 150.0f, 1.15f, (RtsVec4f){0.35f, 0.92f, 1.0f, 1.0f}, "SENSORS: RECON SAT LEO-1 PASS");
+        hud_text(rr, ortho, 40.0f, h - 126.0f, 1.10f, (RtsVec4f){1.0f, 0.45f, 0.35f, 1.0f}, "ACOUSTICS: INTERIOR MUFFLE 65%");
+        hud_quad(rr, ortho, 40.0f, h - 98.0f, 320.0f, 14.0f, (RtsVec4f){0.08f, 0.22f, 0.30f, 1.0f});
+        hud_quad(rr, ortho, 40.0f, h - 98.0f, 250.0f, 14.0f, (RtsVec4f){0.25f, 0.95f, 0.72f, 1.0f});
+
+        render_hud_common(rr, world, input,
+                          "VEHICLE FOUNDRY - 1:1 ASSEMBLY HALL [INTERIOR]",
+                          "QUEUE: PLASMA HEAVY TANK 78% | POWER: +400MW | WRIST-PAD OPEN",
+                          "FOREMAN: TANK HULL WELDING COMPLETE IN 4 SECONDS. READY TO ROLL ONTO APRON.",
+                          false);
+        rr->gfx.end_frame(rr->gfx.state);
+        return;
+    }
+
     /* RTS_SCENE_ORBITAL_SHIPYARD: Dramatic 3/4 orbital showcase of Drydock, Dreadnought, Battlecruiser & Planet Limb */
     rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.01f, 0.015f, 0.045f, 1.0f});
     RtsVec3f cam = {-76.0f, 38.0f, 102.0f};
@@ -719,6 +833,48 @@ void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, cons
                       "ORBITAL SHIPYARD ALPHA [400KM LEO] - DRYDOCK",
                       "VEL:7,672 M/S | ECC:0.002 | INCL:14.3 DEG | DREADNOUGHT 'SOLARIS'",
                       "ASTROGATOR: KEPLERIAN RENDEZVOUS COMPLETE. CRIMSON CRUISER OPENING BEAM LANCE FIRE!",
+                      false);
+    rr->gfx.end_frame(rr->gfx.state);
+}
+
+void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s) {
+    if (!rr || !rr->initialized || !world) return;
+    float aspect = (float)rr->width / (float)(rr->height > 0 ? rr->height : 1);
+    RtsMat4f proj = rts_mat4_perspective((float)(62.0 * RTS_DEG2RAD), aspect, 0.2f, 2000.0f);
+    RtsVec3f light = {0.55f, 0.80f, 0.35f};
+
+    RtsVec3d cam_world = rts_v3d(0.0, 0.0, 0.0);
+    rts_interior_local_to_world(&world->interiors, world->commander.frame_id, world->commander.local_pos, &cam_world);
+    RtsVec3f fwd = {
+        (float)(sin(world->commander.yaw_rad) * cos(world->commander.pitch_rad)),
+        (float)(sin(world->commander.pitch_rad)),
+        (float)(-cos(world->commander.yaw_rad) * cos(world->commander.pitch_rad))
+    };
+    RtsMat4f vp = rts_mat4_mul(proj, rts_mat4_look_at((RtsVec3f){0, 0, 0}, fwd, (RtsVec3f){0, 1, 0}));
+
+    rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.03f, 0.08f, 0.18f, 1.0f});
+    draw_starfield(rr, vp, (RtsVec3f){0, 0, 0}, time_s);
+
+    for (size_t i = 0; i < world->entity_count; ++i) {
+        const RtsEntity *e = &world->entities[i];
+        if (!e->active) continue;
+        RtsVec3f rel = rts_v3d_relative_f(e->pos, cam_world);
+        if (rel.x * rel.x + rel.y * rel.y + rel.z * rel.z > 1800.0f * 1800.0f) continue;
+        RtsGfxHandle mesh = rr->mesh_citadel;
+        if (e->construct_class == RTS_CLASS_GROUND_VEHICLE) mesh = rr->mesh_tank;
+        else if (e->construct_class == RTS_CLASS_NAVAL_SHIP) mesh = rr->mesh_carrier;
+        else if (e->construct_class == RTS_CLASS_AIRCRAFT) mesh = rr->mesh_dropship;
+        else if (e->construct_class == RTS_CLASS_SPACECRAFT) mesh = rr->mesh_dreadnought;
+        else if (e->construct_class == RTS_CLASS_SPACE_STATION) mesh = rr->mesh_shipyard;
+        RtsGfxHandle tex = (e->faction_id == 2) ? rr->tex_hull_red : rr->tex_hull_blue;
+        RtsMat4f model = rts_mat4_from_quat_trs(e->rot, rel, (RtsVec3f){3.0f, 3.0f, 3.0f});
+        draw_mesh(rr, rr->sh_mesh, mesh, tex, vp, model, (RtsVec4f){1,1,1,1}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+    }
+
+    render_hud_common(rr, world, input,
+                      "1STPRTS LIVE FIRST-PERSON COMMANDER VIEW",
+                      "WASD: WALK/PILOT | TAB: WRIST-PAD | E: INTERACT | 1-7: SHOWCASE SCENES",
+                      "LIVE SIMULATION ACTIVE - FLOATING-ORIGIN 64-BIT CAMERA RELATIVE TO COMMANDER.",
                       false);
     rr->gfx.end_frame(rr->gfx.state);
 }

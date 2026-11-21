@@ -5,6 +5,7 @@
 #include "rts/world.h"
 #include "unity.h"
 #include <stdio.h>
+#include <string.h>
 
 static void test_obj_and_png_io(void) {
     const char *obj =
@@ -56,17 +57,28 @@ static void test_retro_renderer_all_scenes_on_null_backend(void) {
     TEST_ASSERT_FALSE(rts_renderer_init(&rr, rts_gfx_null_create(), NULL, 1280, 720));
     TEST_ASSERT_TRUE(rts_renderer_init(&rr, rts_gfx_null_create(), &vfs, 1280, 720));
 
-    /* Exercise all 5 showcase scenes + touch fallback + screenshot capture */
+    /* Exercise all showcase scenes + live-world floating-origin render + screenshot capture */
     for (int s = 0; s < RTS_SCENE_COUNT; ++s) {
         rts_renderer_render_scene(&rr, &world, (s == RTS_SCENE_MOBILE_TOUCH_HUD ? NULL : &input), (RtsShowcaseScene)s, 1.5f + (float)s);
     }
+    const char *cls_ids[6] = {"bldg", "veh", "ship", "air", "space", "stn"};
+    for (int c = 0; c < 6; ++c) {
+        RtsConstructBlueprint bp;
+        memset(&bp, 0, sizeof(bp));
+        snprintf(bp.id, sizeof(bp.id), "%s", cls_ids[c]);
+        bp.construct_class = (RtsConstructClass)c;
+        bp.max_hull = 100.0f;
+        rts_world_register_blueprint(&world, &bp);
+        rts_world_spawn_from_blueprint(&world, cls_ids[c], cls_ids[c], (uint8_t)(c % 2 + 1), world.planet_frame_id, rts_v3d((double)c * 20.0, 0.0, -40.0), false);
+    }
+    rts_renderer_render_live_world(&rr, &world, &input, 2.0f);
     TEST_ASSERT_TRUE(rts_renderer_capture_png(&rr, "/tmp/rts_null_shot.png"));
     TEST_ASSERT_FALSE(rts_renderer_capture_png(&rr, NULL));
 
     RtsGfxStats st = rr.gfx.get_stats(rr.gfx.state);
-    TEST_ASSERT_EQUAL_UINT32((uint32_t)RTS_SCENE_COUNT, st.frames_begun);
-    TEST_ASSERT_EQUAL_UINT32((uint32_t)RTS_SCENE_COUNT, st.frames_ended);
-    TEST_ASSERT_TRUE(st.draw_calls > 100u);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)RTS_SCENE_COUNT + 1u, st.frames_begun);
+    TEST_ASSERT_EQUAL_UINT32((uint32_t)RTS_SCENE_COUNT + 1u, st.frames_ended);
+    TEST_ASSERT_TRUE(st.draw_calls > 150u);
     TEST_ASSERT_EQUAL_UINT32(1u, st.screenshots_saved);
 
     rr.gfx.destroy_mesh(rr.gfx.state, rr.mesh_cube);

@@ -176,6 +176,9 @@ add_library(rts_core STATIC
     src/world.c
     src/voxel.c
     src/input.c
+    src/audio.c
+    src/economy.c
+    src/controller.c
     src/obj_loader.c
     src/image_io.c
     src/gfx_null.c
@@ -204,6 +207,7 @@ target_link_libraries(rts_core PUBLIC rts_stb_impl)
 add_library(rts_platform STATIC
     src/gl_loader.c
     src/gfx_gl.c
+    src/audio_sdl3.c
     src/platform_sdl.c
     src/platform_webxr.c
 )
@@ -259,6 +263,9 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         tests/test_world.c
         tests/test_voxel.c
         tests/test_input.c
+        tests/test_audio.c
+        tests/test_economy.c
+        tests/test_controller.c
         tests/test_assets_and_renderer.c
         tests/test_lua_vm.c
     )

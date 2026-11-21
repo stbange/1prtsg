@@ -29,15 +29,23 @@ static int run_headless(const RtsAppConfig *cfg) {
     rts_input_init(&input, (float)cfg->width, (float)cfg->height, false);
     RtsVoxelChunk voxel;
     rts_voxel_init(&voxel, 1.0f);
+    RtsAudioEngine audio;
+    rts_audio_init(&audio, rts_audio_null_create(), &vfs, 22050);
+    RtsEconomySystem economy;
+    rts_economy_init(&economy);
+    RtsCommanderController ctrl;
+    rts_controller_init(&ctrl);
     RtsRetroRenderer renderer;
     rts_renderer_init(&renderer, rts_gfx_null_create(), &vfs, cfg->width, cfg->height);
 
     RtsLuaVm lua;
     if (!rts_lua_init(&lua, &vfs, &world, &input, &voxel, &renderer)) {
         fprintf(stderr, "[1prtsg] Lua VM init failed\n");
+        rts_audio_shutdown(&audio);
         rts_renderer_shutdown(&renderer);
         return 1;
     }
+    rts_lua_attach_phase2(&lua, &audio, &economy, &ctrl);
     if (cfg->lua_coverage) {
         rts_lua_enable_coverage(&lua, true);
     }
@@ -60,6 +68,7 @@ static int run_headless(const RtsAppConfig *cfg) {
     }
 
     rts_lua_shutdown(&lua);
+    rts_audio_shutdown(&audio);
     rts_renderer_shutdown(&renderer);
     return rc;
 }

@@ -98,7 +98,9 @@ typedef enum RtsShowcaseScene {
     RTS_SCENE_DROPSHIP_INTERIOR = 2,
     RTS_SCENE_ORBITAL_SHIPYARD = 3,
     RTS_SCENE_MOBILE_TOUCH_HUD = 4,
-    RTS_SCENE_COUNT = 5
+    RTS_SCENE_NAVAL_CARRIER_DECK = 5,
+    RTS_SCENE_FOUNDRY_INTERIOR = 6,
+    RTS_SCENE_COUNT = 7
 } RtsShowcaseScene;
 
 typedef struct RtsRetroRenderer {
@@ -116,6 +118,8 @@ typedef struct RtsRetroRenderer {
     RtsGfxHandle tex_hull_red;
     RtsGfxHandle tex_deck_floor;
     RtsGfxHandle tex_planet_surface;
+    RtsGfxHandle tex_ocean;
+    RtsGfxHandle tex_crt_console;
     RtsGfxHandle tex_crew_sprite;
     RtsGfxHandle tex_font_atlas;
 
@@ -128,6 +132,7 @@ typedef struct RtsRetroRenderer {
     RtsGfxHandle mesh_dreadnought;
     RtsGfxHandle mesh_shipyard;
     RtsGfxHandle mesh_starfighter;
+    RtsGfxHandle mesh_carrier;
     RtsGfxHandle mesh_crew3d;
     RtsGfxHandle mesh_voxel_sample;
     RtsGfxHandle mesh_dynamic_2d;
@@ -139,6 +144,7 @@ typedef struct RtsRetroRenderer {
 bool rts_renderer_init(RtsRetroRenderer *rr, RtsGfxBackend gfx, const RtsVfs *vfs, int width, int height);
 void rts_renderer_shutdown(RtsRetroRenderer *rr);
 void rts_renderer_render_scene(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, RtsShowcaseScene scene, float time_s);
+void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s);
 bool rts_renderer_capture_png(RtsRetroRenderer *rr, const char *out_path);
 
 #endif /* RTS_GFX_H */

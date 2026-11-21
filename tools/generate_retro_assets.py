@@ -367,6 +367,58 @@ def gen_models(models_dir: Path) -> None:
     m.add_box(0.0, 1.18, 0.22, 0.34, 0.44, 0.16) # Exo-suit pack
     m.save(models_dir / "crew_3d.obj", "Low-Poly 3D Crew Officer")
 
+    # 8. 340m Fleet Starfighter Carrier (vast flight deck + angled waist + starboard Island ATC Tower)
+    m = ObjBuilder()
+    m.add_box(0, 0.45, 0, 2.8, 0.9, 9.6)         # Armored lower hull
+    m.add_box(-0.25, 0.98, 0.1, 3.6, 0.22, 10.2) # Wide flight deck
+    m.add_box(1.35, 1.75, 1.2, 0.85, 1.45, 2.2)  # Starboard Island Tower
+    m.add_box(1.35, 2.65, 1.2, 0.65, 0.55, 1.3)  # ATC Glass Bridge
+    m.add_box(1.35, 3.35, 1.2, 0.18, 0.95, 0.18) # Comms / Radar Mast
+    m.add_box(-1.85, 0.65, -1.2, 0.6, 0.55, 1.4) # Port Aircraft Elevator
+    m.save(models_dir / "carrier.obj", "Fleet Starfighter Carrier")
+
+
+def gen_ocean_texture(path: Path) -> None:
+    w, h = 64, 64
+    buf = bytearray(w * h * 4)
+    for y in range(h):
+        for x in range(w):
+            wave_v = math.sin(x * 0.35 + y * 0.15) + 0.5 * math.cos(y * 0.5 - x * 0.2)
+            r, g, b = 16, 68, 152
+            if wave_v > 1.05:
+                r, g, b = 155, 220, 250
+            elif wave_v > 0.45:
+                r, g, b = 32, 118, 210
+            elif wave_v < -0.7:
+                r, g, b = 10, 46, 112
+            set_px(buf, w, h, x, y, r, g, b, 255)
+    write_png(path, w, h, buf)
+
+
+def gen_crt_console_texture(path: Path) -> None:
+    w, h = 64, 64
+    buf = bytearray(w * h * 4)
+    for y in range(h):
+        for x in range(w):
+            border = (x < 4 or x >= 60 or y < 4 or y >= 60)
+            if border:
+                set_px(buf, w, h, x, y, 45, 62, 92, 255)
+                continue
+            r, g, b = 8, 24, 34
+            if y % 2 == 0:
+                g += 10
+                b += 14
+            dx, dy = x - 32, y - 32
+            dist = math.sqrt(dx * dx + dy * dy)
+            if abs(dist - 12.0) < 1.0 or abs(dist - 22.0) < 1.0 or x == 32 or y == 32:
+                r, g, b = 32, 220, 185
+            if abs(dx - 9) <= 1 and abs(dy + 8) <= 1:
+                r, g, b = 255, 70, 65
+            if abs(dx + 11) <= 1 and abs(dy - 6) <= 1:
+                r, g, b = 255, 215, 55
+            set_px(buf, w, h, x, y, r, g, b, 255)
+    write_png(path, w, h, buf)
+
 
 def gen_voxel_sample(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -416,12 +468,16 @@ def main() -> None:
     gen_hull_texture(assets / "textures/hull_red.png", (162, 34, 42), (240, 148, 32), (255, 220, 85))
     gen_deck_floor(assets / "textures/deck_floor.png")
     gen_planet_surface(assets / "textures/planet_surface.png")
+    gen_ocean_texture(assets / "textures/ocean_wave.png")
+    gen_crt_console_texture(assets / "textures/crt_console.png")
     gen_crew_8dir_sprite(assets / "sprites/crew_8dir.png")
     gen_font_atlas(assets / "fonts/retro_font.png")
     gen_models(assets / "models")
     gen_voxel_sample(assets / "voxels/bunker_module.vxl")
     gen_wav_tone(assets / "audio/plasma_bolt.wav", 880.0, 180.0, 0.22)
     gen_wav_tone(assets / "audio/alert_klaxon.wav", 520.0, 640.0, 0.45)
+    gen_wav_tone(assets / "audio/engine_hum.wav", 110.0, 130.0, 0.35)
+    gen_wav_tone(assets / "audio/docking_clamp.wav", 240.0, 95.0, 0.30)
 
     # Planet definition JSON
     pdir = assets / "planets"
