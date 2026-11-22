@@ -1249,12 +1249,12 @@ double rts_lua_report_coverage(const RtsLuaVm *vm, double min_percent, bool verb
                     buf[k] = p[k];
                     ++k;
                 }
+                p += k;
+                if (*p == '\n') ++p;
                 while (k > 0 && buf[k - 1] == '\r') {
                     --k;
                 }
                 buf[k] = '\0';
-                p += k;
-                if (*p == '\n') ++p;
                 bool hit = (ln < 2048) && ((cf->hit_mask[ln >> 5] & (1u << (ln & 31u))) != 0u);
                 if (hit) {
                     f_exec++;
