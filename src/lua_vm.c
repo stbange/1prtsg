@@ -1210,6 +1210,9 @@ double rts_lua_report_coverage(const RtsLuaVm *vm, double min_percent, bool verb
                     buf[k] = p[k];
                     ++k;
                 }
+                while (k > 0 && buf[k - 1] == '\r') {
+                    --k;
+                }
                 buf[k] = '\0';
                 p += k;
                 if (*p == '\n') ++p;

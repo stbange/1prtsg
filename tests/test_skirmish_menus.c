@@ -113,17 +113,17 @@ static void test_solaris_menu_navigation_defaults_and_clicks(void) {
     ms.screen = RTS_MENU_MATCH_END; ms.selected_row = 0;
     TEST_ASSERT_EQUAL_INT(RTS_MENU_ACT_START_SKIRMISH, rts_menu_activate(&ms));
 
-    /* 5-Slot Persistent Save/Load Round-Trip on Disk (/tmp) */
+    /* 5-Slot Persistent Save/Load Round-Trip on Disk (portable current dir for Linux/macOS/Windows) */
     rts_menu_init(&ms);
     w->sim_time_s = 123.5;
-    TEST_ASSERT_TRUE(rts_menu_save_slot(&ms, 0, "/tmp", w, eco));
+    TEST_ASSERT_TRUE(rts_menu_save_slot(&ms, 0, ".", w, eco));
     TEST_ASSERT_TRUE(ms.slots[0].occupied);
-    rts_menu_refresh_slots(&ms, "/tmp");
+    rts_menu_refresh_slots(&ms, ".");
     w->sim_time_s = 0.0;
-    TEST_ASSERT_TRUE(rts_menu_load_slot(&ms, 0, "/tmp", w, eco));
+    TEST_ASSERT_TRUE(rts_menu_load_slot(&ms, 0, ".", w, eco));
     TEST_ASSERT_DOUBLE_WITHIN(0.1, 123.5, w->sim_time_s);
-    TEST_ASSERT_FALSE(rts_menu_load_slot(&ms, 4, "/tmp/nonexistent_slot_dir", w, eco));
-    remove("/tmp/1prtsg_slot_1.rts");
+    TEST_ASSERT_FALSE(rts_menu_load_slot(&ms, 4, "./nonexistent_slot_dir", w, eco));
+    remove("./1prtsg_slot_1.rts");
 
     /* Null-backend renderer pass across Main, Scenarios, Save/Load, and Match End Defeat */
     RtsVfs vfs;

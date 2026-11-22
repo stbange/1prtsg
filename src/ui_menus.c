@@ -6,7 +6,24 @@
 #include <string.h>
 
 #ifdef __EMSCRIPTEN__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpedantic"
 #include <emscripten.h>
+EM_JS(void, rts_web_storage_save, (int slot, const char *data), {
+    try { localStorage.setItem("1prtsg_save_slot_" + slot, UTF8ToString(data)); } catch (e) {}
+});
+EM_JS(int, rts_web_storage_load, (int slot, char *out_buf, int cap), {
+    try {
+        var s = localStorage.getItem("1prtsg_save_slot_" + slot);
+        if (!s) return 0;
+        stringToUTF8(s, out_buf, cap);
+        return s.length;
+    } catch (e) { return 0; }
+});
+EM_JS(int, rts_web_storage_exists, (int slot), {
+    try { return localStorage.getItem("1prtsg_save_slot_" + slot) ? 1 : 0; } catch (e) { return 0; }
+});
+#pragma clang diagnostic pop
 #endif
 
 static const char *const k_scenario_ids[4] = {
@@ -291,11 +308,7 @@ bool rts_menu_save_slot(RtsMenuState *ms, int slot, const char *save_dir, const 
     if (len == 0u) { free(buf); return false; }
 
 #ifdef __EMSCRIPTEN__
-    EM_ASM({
-        try {
-            localStorage.setItem("1prtsg_save_slot_" + $0, UTF8ToString($1));
-        } catch (e) {}
-    }, slot + 1, buf);
+    rts_web_storage_save(slot + 1, buf);
     (void)save_dir;
     bool ok = true;
 #else
@@ -322,14 +335,7 @@ bool rts_menu_load_slot(RtsMenuState *ms, int slot, const char *save_dir, RtsWor
 #ifdef __EMSCRIPTEN__
     char *buf = (char *)calloc(1, 32768u);
     if (!buf) return false;
-    int got = EM_ASM_INT({
-        try {
-            var s = localStorage.getItem("1prtsg_save_slot_" + $0);
-            if (!s) return 0;
-            stringToUTF8(s, $1, $2);
-            return s.length;
-        } catch (e) { return 0; }
-    }, slot + 1, buf, 32768);
+    int got = rts_web_storage_load(slot + 1, buf, 32768);
     if (got > 0) ok = rts_save_deserialize(buf, w, eco);
     free(buf);
     (void)save_dir;
@@ -351,9 +357,7 @@ void rts_menu_refresh_slots(RtsMenuState *ms, const char *save_dir) {
     if (!ms) return;
     for (int i = 0; i < RTS_SAVE_SLOT_COUNT; ++i) {
 #ifdef __EMSCRIPTEN__
-        int exists = EM_ASM_INT({
-            try { return localStorage.getItem("1prtsg_save_slot_" + $0) ? 1 : 0; } catch (e) { return 0; }
-        }, i + 1);
+        int exists = rts_web_storage_exists(i + 1);
         ms->slots[i].occupied = (exists != 0);
         if (exists && ms->slots[i].label[0] == '\0') {
             snprintf(ms->slots[i].label, sizeof(ms->slots[i].label), "WEB SAVED CAMPAIGN");
