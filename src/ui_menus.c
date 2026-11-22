@@ -296,9 +296,11 @@ RtsMenuAction rts_menu_click(RtsMenuState *ms, float click_x, float click_y, flo
     return RTS_MENU_ACT_NONE;
 }
 
+#ifndef __EMSCRIPTEN__
 static void build_slot_path(const char *save_dir, int slot, char *out, size_t cap) {
     snprintf(out, cap, "%s/1prtsg_slot_%d.rts", (save_dir && save_dir[0]) ? save_dir : ".", slot + 1);
 }
+#endif
 
 bool rts_menu_save_slot(RtsMenuState *ms, int slot, const char *save_dir, const RtsWorld *w, const RtsEconomySystem *eco) {
     if (!ms || !w || !eco || slot < 0 || slot >= RTS_SAVE_SLOT_COUNT) return false;
