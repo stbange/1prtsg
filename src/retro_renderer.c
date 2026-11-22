@@ -7,6 +7,7 @@
 #include "rts/interior_gen.h"
 #include "rts/planet_mesh.h"
 #include "rts/tactical_sim.h"
+#include "rts/ui_menus.h"
 #include "rts/vehicle_physics.h"
 #include <math.h>
 #include <stdio.h>
@@ -2530,6 +2531,99 @@ void rts_renderer_render_tactical(RtsRetroRenderer *rr, const RtsTacticalSim *si
                       sim->game_over ? "IRONMAN DEFEAT - INSTANT IN-MEMORY RETRY READY IN 0.25S (PRESS R/ENTER)!"
                                      : "TACTICAL LINK ACTIVE: PRIME SHIELDED CRUISERS WITH [Q] EMP FOR x2.4 PLASMA CRIT!",
                       false);
+    rr->gfx.end_frame(rr->gfx.state);
+}
+
+void rts_renderer_render_menu_screen(RtsRetroRenderer *rr, const RtsWorld *world, const RtsMenuState *menu, float time_s) {
+    if (!rr || !rr->initialized || !menu) return;
+    float w = (float)rr->width, h = (float)rr->height;
+    float aspect = w / (h > 0.0f ? h : 1.0f);
+    RtsMat4f proj = rts_mat4_perspective((float)(58.0 * RTS_DEG2RAD), aspect, 0.2f, 2200.0f);
+    RtsVec3f cam = {0.0f, 10.0f, 44.0f};
+    RtsVec3f sun = {0.66f, 0.34f, -0.66f};
+    RtsVec3f light = {0.62f, 0.72f, 0.34f};
+    RtsMat4f vp = rts_mat4_mul(proj, rts_mat4_look_at(cam, (RtsVec3f){0.0f, 3.0f, -20.0f}, (RtsVec3f){0.0f, 1.0f, 0.0f}));
+    rr->cur_cam_pos = cam;
+    rr->cur_fog_color = (RtsVec4f){0.03f, 0.06f, 0.14f, 0.18f};
+
+    rr->gfx.begin_frame(rr->gfx.state, rr->width, rr->height, (RtsVec4f){0.015f, 0.025f, 0.065f, 1.0f});
+    draw_sky_dome(rr, vp, cam, sun, 1.0f, time_s);
+
+    /* Live 3D Rotating Helios Prime Planet + Atmospheric Rim + Orbiting Shipyard Alpha & Dreadnought Solaris */
+    RtsQuatd p_rot = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.32),
+                                  rts_quat_from_axis_angle(rts_v3d(0, 1, 0), (double)time_s * 0.12 + 0.8));
+    draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_planet_surface, vp,
+              rts_mat4_from_quat_trs(p_rot, (RtsVec3f){48.0f, -24.0f, -110.0f}, (RtsVec3f){64.0f, 64.0f, 64.0f}),
+              (RtsVec4f){0.86f, 0.94f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+    draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+              rts_mat4_from_quat_trs(p_rot, (RtsVec3f){48.0f, -24.0f, -110.0f}, (RtsVec3f){67.5f, 67.5f, 67.5f}),
+              (RtsVec4f){0.22f, 0.90f, 1.0f, 0.34f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+    draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+              rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.42),
+                                     (RtsVec3f){48.0f, -24.0f, -110.0f}, (RtsVec3f){92.0f, 92.0f, 92.0f}),
+              (RtsVec4f){1.0f, 0.84f, 0.30f, 0.90f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+
+    RtsQuatd sy_rot = rts_quat_from_axis_angle(rts_v3d(0, 1, 0), (double)time_s * 0.16 - 0.5);
+    draw_mesh(rr, rr->sh_mesh, rr->mesh_shipyard, rr->tex_hull_blue, vp,
+              rts_mat4_from_quat_trs(sy_rot, (RtsVec3f){-32.0f, 12.0f, -34.0f}, (RtsVec3f){1.9f, 1.9f, 1.9f}),
+              (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+    draw_mesh(rr, rr->sh_mesh, rr->mesh_dreadnought, rr->tex_hull_blue, vp,
+              rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 0.72),
+                                     (RtsVec3f){26.0f + sinf(time_s * 0.4f) * 3.0f, 15.0f, -26.0f}, (RtsVec3f){1.45f, 1.45f, 1.45f}),
+              (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+    draw_mesh(rr, rr->sh_mesh, rr->mesh_starfighter, rr->tex_hull_blue, vp,
+              rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), -0.45),
+                                     (RtsVec3f){-14.0f + cosf(time_s * 0.9f) * 6.0f, -4.0f, -8.0f}, (RtsVec3f){1.1f, 1.1f, 1.1f}),
+              (RtsVec4f){1.0f, 1.0f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+
+    /* Solaris Retro-Futurism Glass Menu Panel (Matches rts_menu_click Hit Geometry 1:1) */
+    RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+    int cnt = rts_menu_item_count(menu);
+    float pw = 640.0f;
+    float ph = 152.0f + (float)cnt * 48.0f;
+    float px = w * 0.5f - pw * 0.5f;
+    float py = h * 0.5f - 210.0f;
+
+    RtsVec4f border_col = (menu->screen == RTS_MENU_MATCH_END && !menu->victory)
+                        ? (RtsVec4f){1.0f, 0.28f, 0.42f, 1.0f} : (RtsVec4f){0.26f, 0.94f, 1.0f, 0.98f};
+    hud_border_box(rr, ortho, px, py, pw, ph, (RtsVec4f){0.02f, 0.055f, 0.13f, 0.90f}, border_col);
+
+    const char *title = rts_menu_screen_title(menu->screen);
+    hud_text(rr, ortho, px + 24.0f, py + 20.0f, 1.55f, (RtsVec4f){1.0f, 0.86f, 0.34f, 1.0f}, title);
+
+    char sub[128];
+    if (menu->screen == RTS_MENU_SCENARIOS) {
+        snprintf(sub, sizeof(sub), "%.78s", rts_scenario_brief(menu->selected_row < 4 ? menu->selected_row : 0));
+    } else if (menu->screen == RTS_MENU_MATCH_END) {
+        snprintf(sub, sizeof(sub), "%.78s", menu->match_summary[0] ? menu->match_summary : "OPERATION CONCLUDED");
+    } else {
+        snprintf(sub, sizeof(sub), "EXCLUSIVELY FIRST-PERSON RTS | 76 ENTERABLE CONSTRUCTS | IRONMAN: %s",
+                 menu->skirmish_ironman ? "ON" : "OFF");
+    }
+    char sub_up[128];
+    upper_trunc_copy(sub_up, sizeof(sub_up), sub, 76);
+    hud_text(rr, ortho, px + 24.0f, py + 54.0f, 1.0f, (RtsVec4f){0.42f, 0.96f, 0.96f, 1.0f}, sub_up);
+
+    for (int i = 0; i < cnt; ++i) {
+        float ry = py + 86.0f + (float)i * 48.0f;
+        bool sel = (i == menu->selected_row);
+        hud_border_box(rr, ortho, px + 20.0f, ry, pw - 40.0f, 40.0f,
+                       sel ? (RtsVec4f){0.11f, 0.30f, 0.48f, 0.96f} : (RtsVec4f){0.04f, 0.09f, 0.19f, 0.88f},
+                       sel ? (RtsVec4f){1.0f, 0.86f, 0.32f, 1.0f} : (RtsVec4f){0.24f, 0.72f, 0.90f, 0.78f});
+        char lbl[128];
+        rts_menu_item_label(menu, world, i, lbl, sizeof(lbl));
+        char lup[128];
+        upper_trunc_copy(lup, sizeof(lup), lbl, 64);
+        hud_text(rr, ortho, px + 36.0f, ry + 13.0f, 1.12f,
+                 sel ? (RtsVec4f){1.0f, 0.96f, 0.56f, 1.0f} : (RtsVec4f){0.92f, 0.97f, 1.0f, 1.0f}, lup);
+    }
+
+    char foot_up[128];
+    upper_trunc_copy(foot_up, sizeof(foot_up), menu->status_note, 74);
+    hud_text(rr, ortho, px + 24.0f, py + ph - 44.0f, 0.98f, (RtsVec4f){0.74f, 0.88f, 0.98f, 1.0f}, foot_up);
+    hud_text(rr, ortho, px + 24.0f, py + ph - 22.0f, 0.92f, (RtsVec4f){1.0f, 0.84f, 0.34f, 1.0f},
+             "CLICK ITEM OR USE UP/DOWN + ENTER | KEYS 1-6 QUICK SELECT | ESC BACK");
+
     rr->gfx.end_frame(rr->gfx.state);
 }
 

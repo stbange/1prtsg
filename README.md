@@ -100,6 +100,21 @@ Command your planetary and orbital war effort strictly from first-person through
 
 ---
 
+## Solaris Main Menu, Autonomous Strategic AI, Physical Logistics, 4 Scenarios & 5-Slot Persistent Saves (`src/ui_menus.c`, `scripts/ai/strategic_ai.lua`, `scripts/rules/logistics.lua`)
+
+- **Solaris Main Menu & Live 3D Orbital Backdrop:** Boots directly into a sleek glass Solaris Command menu floating above rotating Helios Prime, Orbital Shipyard Alpha, and Dreadnought Solaris — offering one-click entry into **Planetary-to-Orbital Skirmish** (Hardcore Ironman ON default, toggleable; Balanced/Aggressive AI), **Free-Explore Sandbox** (all 76 constructs), **Tactical Defense**, **4 Curated Scenarios**, **5-Slot Persistent Saves** (OS files on Desktop + `localStorage` on GitHub Pages Web), **Pause Menu (`Esc`)**, and **Mod Manager**.
+- **Autonomous Strategic AI & Physical Convoy Logistics:** Enemy factions expand mines, foundries, spaceports, orbital shipyards, and severable GEO Comms Relays while Ore Cargo Trucks, Naval Relay Tenders, and Orbital Lifters physically shuttle supplies along raidable logistics routes!
+
+| Default Solaris Main Menu & 3D Orbital Backdrop | Planetary-to-Orbital Skirmish Configurator |
+| :---: | :---: |
+| ![Solaris Main Menu](docs/screenshots/m012_01_solaris_main_menu.png) | ![Skirmish Setup](docs/screenshots/m012_02_skirmish_setup_scenarios.png) |
+
+| Curated Scenario #3: Escape the Flagship (60s Meltdown) | Persistent 5-Slot Save/Load Browser (Disk & Web) |
+| :---: | :---: |
+| ![Escape Flagship Meltdown](docs/screenshots/m012_03_escape_flagship_meltdown.png) | ![Persistent 5-Slot Saves](docs/screenshots/m012_04_pause_save_slots.png) |
+
+---
+
 ## Complete Feature Matrix (Phases 1–4 + Solaris Art Direction + 76 Unique Models + 1–420 Room Mega-Interiors + Tier 1/2/3 RTS Toolkit)
 
 - **Exclusively First-Person Commander & Hardcore Ironman (`src/world.c`, `src/controller.c`):** Zero god-camera. Walk seamlessly across interconnected rooms through open bulkhead doorways inside 1:1 multi-deck interiors, ride vertical **Turbolifts** across up to 20 decks, interact with physical War Room **3D Planetary & Orbital Holo-Globes**, Factory Terminals, Pilot Seats, and Bridge Helms, take direct manual piloting control of any construct (then hand back to AI crew), and survive Critical Reactor Meltdowns via physical **Escape Pod** evacuation.

@@ -186,6 +186,7 @@ add_library(rts_core STATIC
     src/field_gear.c
     src/vehicle_physics.c
     src/combat_sim.c
+    src/ui_menus.c
     src/world.c
     src/voxel.c
     src/input.c
@@ -284,6 +285,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         tests/test_mega_interiors_and_crew.c
         tests/test_rts_toolkit.c
         tests/test_planet_physics_combat.c
+        tests/test_skirmish_menus.c
         tests/test_world.c
         tests/test_voxel.c
         tests/test_input.c

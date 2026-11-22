@@ -176,9 +176,59 @@ check(ironman.attempt_emergency_evac(), "Commander should eject cleanly from Cit
 local st2 = ironman.evaluate_status()
 check(st2 == "EVACUATED_SAFE", "Commander should be marked EVACUATED_SAFE inside escape pod")
 
+-- Milestone 012: Strategic AI Commander, Physical Logistics Convoys & 4 Curated Scenarios
+local strat_ai = require("ai.strategic_ai")
+local logi = require("rules.logistics")
+local scenarios = require("missions.scenarios")
+
+local ai_bal = strat_ai.new_commander(2, "balanced")
+local ai_agg = strat_ai.new_commander(2, "aggressive")
+check(ai_bal.difficulty == "balanced" and ai_agg.difficulty == "aggressive", "Strategic AI difficulty presets failed")
+check(strat_ai.evaluate_build_order(ai_bal, 50, true, true) == nil, "Low-ore AI should defer build")
+local bp_mine, _ = strat_ai.evaluate_build_order(ai_bal, 300, true, true)
+check(bp_mine == "bldg_ore_mine", "AI should build ore mine first")
+ai_bal.built_count = 1
+local bp_fnd, _ = strat_ai.evaluate_build_order(ai_bal, 400, true, true)
+check(bp_fnd == "bldg_vehicle_foundry", "AI should build vehicle foundry second")
+ai_agg.built_count = 2
+local bp_ds, _ = strat_ai.evaluate_build_order(ai_agg, 500, true, true)
+check(bp_ds == "air_dropship", "Aggressive AI should queue dropship assault craft")
+ai_bal.built_count = 2
+local bp_tk, _ = strat_ai.evaluate_build_order(ai_bal, 500, true, true)
+check(bp_tk == "veh_plasma_tank", "Balanced AI should queue armor")
+local early_rep = strat_ai.step(ai_bal, nil, 0.5)
+check(early_rep.built == nil, "AI should respect think interval")
+local rep1 = strat_ai.step(ai_bal, { target_id = ACTIVE_MISSION.citadel, raider_id = ACTIVE_MISSION.enemy_tank }, 3.5)
+check(rep1.built == "stn_comms_relay" and rep1.relay_restored, "AI should deploy GEO comms relay first")
+engine.world.apply_damage(ai_bal.relay_id, 99999, 0)
+local rep1b = strat_ai.step(ai_bal, nil, 3.5)
+check(rep1b.relay_restored and ai_bal.relay_rebuilds >= 1, "AI must detect & rebuild destroyed comms relay")
+local rep2 = strat_ai.step(ai_bal, { target_id = ACTIVE_MISSION.citadel, raider_id = ACTIVE_MISSION.enemy_tank }, 3.5)
+check(rep2.built == "stn_orbital_shipyard", "AI should expand Orbital Shipyard next")
+ai_bal.built_count = 1
+local rep3 = strat_ai.step(ai_bal, nil, 3.5)
+check(rep3.built == "bldg_vehicle_foundry", "AI should build Vehicle Foundry")
+
+local lnet = logi.new_network()
+local truck = engine.world.spawn("veh_cargo_truck", "Ore Convoy 1", 1, 10, 6371000, 10, false)
+local r1 = logi.add_route(lnet, 1, truck, "SURFACE_TRUCK", 150, 40, 2.0)
+local d_ore, d_fuel = logi.step(lnet, 2.5)
+check(d_ore == 150 and d_fuel == 40 and lnet.total_ore_delivered == 150, "Physical convoy failed to deliver cargo")
+check(logi.raid_convoy(lnet, r1) and not logi.raid_convoy(lnet, r1), "Convoy raid disruption failed")
+local dead_truck = engine.world.spawn("veh_cargo_truck", "Ghost Convoy", 1, 20, 6371000, 20, false)
+local r2 = logi.add_route(lnet, 1, dead_truck, "SURFACE_TRUCK", 100, 20, 1.0)
+engine.world.apply_damage(dead_truck, 99999, 0)
+logi.step(lnet, 1.5)
+check(not lnet.routes[r2].active, "Destroyed hauler route should deactivate cleanly")
+
+check(scenarios.count() == 4, "Expected 4 curated scenarios")
+check(scenarios.find("missing") == nil and scenarios.launch_scenario("missing") == nil, "Missing scenario should return nil")
+local sc_run = scenarios.launch_scenario("escape_flagship_60s")
+check(sc_run ~= nil and sc_run.flagship_id > 0 and sc_run.enemy_id > 0, "Scenario launch failed")
+
 engine.world.commander_board(ACTIVE_MISSION.enemy_tank)
 combat.plasma_salvo(ACTIVE_MISSION.enemy_tank, 5000, combat.SUBSYS_REACTOR)
 local st3 = ironman.evaluate_status()
 check(st3 == "DEFEAT_IRONMAN", "Destroying commander's vessel without escape pod must trigger DEFEAT_IRONMAN")
 
-print("[Lua Unit Tests] ALL PASSED (Phases 1-4: 76 constructs, 12 roles, economy, sensors, astrogator, skirmish AI, boarding, meltdown, session/save/reload)")
+print("[Lua Unit Tests] ALL PASSED (Phases 1-4 + M012: 76 constructs, 12 roles, economy, sensors, astrogator, strategic AI, logistics, 4 scenarios, boarding, meltdown, session/save/reload)")

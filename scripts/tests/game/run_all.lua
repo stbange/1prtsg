@@ -196,4 +196,27 @@ expect(clamped_ok and lifted_alt > 10.0, "Scenario 23: Dropship cargo clamp orbi
 local emp_combos, voxel_craters = engine.combat.emp_strike_test(ACTIVE_MISSION.tank, ACTIVE_MISSION.enemy_tank)
 expect(emp_combos >= 1 and voxel_craters >= 1, "Scenario 24: Unified live combat EMP synergy or voxel crater failed")
 
-print("[Automated Game Tests] ALL 24 END-TO-END SCENARIOS PASSED!")
+-- Scenario 25: Autonomous Multi-Theater Strategic AI Expansion, Relay Warfare & Physical Logistics Convoy Raiding
+local strat_ai = require("ai.strategic_ai")
+local logi = require("rules.logistics")
+local enemy_ai = strat_ai.new_commander(2, "balanced")
+local r_relay = strat_ai.step(enemy_ai, { target_id = ACTIVE_MISSION.citadel, raider_id = ACTIVE_MISSION.enemy_tank }, 3.2)
+expect(r_relay.built == "stn_comms_relay", "Scenario 25: Strategic AI failed to establish orbital comms relay")
+local r_yard = strat_ai.step(enemy_ai, { target_id = ACTIVE_MISSION.citadel, raider_id = ACTIVE_MISSION.enemy_tank }, 3.2)
+expect(r_yard.built == "stn_orbital_shipyard", "Scenario 25: Strategic AI failed to expand orbital shipyard")
+local cnet = logi.new_network()
+local hauler = engine.world.spawn("veh_cargo_truck", "Solaris Ore Convoy", 1, 14, 6371000, 14, false)
+local ridx = logi.add_route(cnet, 1, hauler, "SURFACE_TRUCK", 220, 60, 2.0)
+local got_ore, got_fuel = logi.step(cnet, 2.1)
+expect(got_ore == 220 and got_fuel == 60, "Scenario 25: Physical logistics convoy failed ore/fuel delivery")
+expect(logi.raid_convoy(cnet, ridx), "Scenario 25: Commerce raiding failed to destroy convoy")
+
+-- Scenario 26: All 4 Curated Scenarios Verified & Escape the Flagship 60s Meltdown Triggered
+local scenarios = require("missions.scenarios")
+expect(scenarios.count() == 4, "Scenario 26: Expected 4 curated scenarios")
+local esc_sc = scenarios.launch_scenario("escape_flagship_60s")
+expect(esc_sc ~= nil and esc_sc.flagship_id > 0, "Scenario 26: Failed to launch Escape the Flagship scenario")
+local md = engine.boarding.get_meltdown(esc_sc.flagship_id)
+expect(md ~= nil and md.active and md.countdown_s >= 55.0, "Scenario 26: Escape the Flagship 60s reactor meltdown failed to arm")
+
+print("[Automated Game Tests] ALL 26 END-TO-END SCENARIOS PASSED!")

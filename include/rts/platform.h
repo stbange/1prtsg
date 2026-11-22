@@ -15,6 +15,7 @@ typedef struct RtsAppConfig {
     const char *mega_interiors_dir;
     const char *rts_toolkit_dir;
     const char *milestone_011_dir;
+    const char *milestone_012_dir;
     const char *telemetry_out;
     const char *mod_to_mount;
     int width;
@@ -35,6 +36,7 @@ int rts_platform_capture_roster_gallery(const RtsAppConfig *cfg);
 int rts_platform_capture_mega_interiors(const RtsAppConfig *cfg);
 int rts_platform_capture_rts_toolkit(const RtsAppConfig *cfg);
 int rts_platform_capture_milestone_011(const RtsAppConfig *cfg);
+int rts_platform_capture_milestone_012(const RtsAppConfig *cfg);
 
 /* Emscripten / WebXR bridge entry points */
 void rts_web_notify_touch_device(int is_coarse_touch);

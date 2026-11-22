@@ -200,6 +200,8 @@ void rts_renderer_render_roster_class(RtsRetroRenderer *rr, const RtsWorld *worl
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s);
 void rts_renderer_render_tactical(RtsRetroRenderer *rr, const struct RtsTacticalSim *sim, const RtsWorld *world, const RtsInputRouter *input, float time_s);
 void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, const RtsXrFrameState *xr, float time_s);
+struct RtsMenuState;
+void rts_renderer_render_menu_screen(RtsRetroRenderer *rr, const RtsWorld *world, const struct RtsMenuState *menu, float time_s);
 bool rts_renderer_capture_png(RtsRetroRenderer *rr, const char *out_path);
 
 #endif /* RTS_GFX_H */

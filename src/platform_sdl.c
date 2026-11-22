@@ -12,6 +12,7 @@
 #include "rts/platform.h"
 #include "rts/save_load.h"
 #include "rts/tactical_sim.h"
+#include "rts/ui_menus.h"
 #include "rts/vehicle_physics.h"
 #include "rts/vfs.h"
 #include "rts/voxel.h"
@@ -51,6 +52,7 @@ typedef struct InteractiveApp {
     RtsFieldGearState gear;
     RtsCombatSim combat;
     RtsVehiclePhysicsState vphys;
+    RtsMenuState menu;
     RtsRetroRenderer renderer;
     RtsLuaVm lua;
     RtsShowcaseScene scene;
@@ -216,6 +218,8 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
     rts_field_gear_init(&app->gear);
     rts_combat_init(&app->combat);
     rts_vehicle_physics_init(&app->vphys);
+    rts_menu_init(&app->menu);
+    rts_menu_refresh_slots(&app->menu, ".");
     RtsFeelConfig feel = cfg->fun_baseline ? rts_feel_config_baseline() : rts_feel_config_solaris();
     rts_tactical_init(&app->tactical, &feel, seed, &app->audio);
 
@@ -384,6 +388,85 @@ static void sandbox_hologlobe_click(InteractiveApp *app, bool additive) {
     }
 }
 
+static void handle_menu_action(InteractiveApp *app, RtsMenuAction act) {
+    if (act == RTS_MENU_ACT_NONE) return;
+    if (act == RTS_MENU_ACT_START_SKIRMISH) {
+        app->world.planet.radius_m = rts_planet_preset_radius_m(app->menu.planet_radius_preset);
+        app->world.hardcore_ironman = app->menu.skirmish_ironman;
+        app->world.match_state = RTS_MATCH_ACTIVE;
+        app->view_mode = RTS_VIEW_SANDBOX_RTS;
+        uint32_t cit = find_entity_by_blueprint(&app->world, "bldg_command_citadel", 1u);
+        if (cit != 0u) sandbox_enter_entity_mega(app, cit, 0u);
+        char msg[160];
+        snprintf(msg, sizeof(msg), "SKIRMISH LIVE | AI:%s | IRONMAN:%s | PRESS [E] AT HOLO-GLOBE OR [ESC] PAUSE",
+                 app->menu.skirmish_ai_aggressive ? "AGGRESSIVE" : "BALANCED",
+                 app->world.hardcore_ironman ? "ON" : "OFF");
+        rts_renderer_set_live_status(&app->renderer, "PLANETARY-TO-ORBITAL SKIRMISH", "", msg);
+    } else if (act == RTS_MENU_ACT_START_SANDBOX) {
+        app->world.hardcore_ironman = false;
+        app->view_mode = RTS_VIEW_SANDBOX_RTS;
+        if (app->world.blueprint_count > 0u) {
+            size_t bi = (size_t)((app->menu.sandbox_bp_idx < 0 ? 0 : app->menu.sandbox_bp_idx) % (int)app->world.blueprint_count);
+            const RtsConstructBlueprint *bp = &app->world.blueprints[bi];
+            double alt = bp->can_orbit ? 400000.0 : 0.0;
+            uint32_t eid = find_entity_by_blueprint(&app->world, bp->id, 1u);
+            if (eid == 0u) {
+                eid = rts_world_spawn_from_blueprint(&app->world, bp->id, bp->name, 1u,
+                                                     app->world.planet_frame_id, rts_v3d(42.0, app->world.planet.radius_m + alt, -24.0), true);
+            }
+            if (eid != 0u) sandbox_enter_entity_mega(app, eid, 0u);
+        }
+    } else if (act == RTS_MENU_ACT_START_TACTICAL) {
+        app->view_mode = RTS_VIEW_TACTICAL;
+    } else if (act == RTS_MENU_ACT_LAUNCH_SCENARIO) {
+        app->view_mode = RTS_VIEW_SANDBOX_RTS;
+        app->world.hardcore_ironman = true;
+        int si = app->menu.scenario_idx;
+        double R = app->world.planet.radius_m;
+        if (si == 1) {
+            uint32_t car = find_entity_by_blueprint(&app->world, "ship_fleet_carrier", 1u);
+            if (car == 0u) car = rts_world_spawn_from_blueprint(&app->world, "ship_fleet_carrier", "Carrier Vanguard", 1u, app->world.planet_frame_id, rts_v3d(170.0, R, 20.0), true);
+            sandbox_enter_entity_mega(app, car, 0u);
+        } else if (si == 2) {
+            uint32_t dr = find_entity_by_blueprint(&app->world, "space_command_dreadnought", 1u);
+            if (dr == 0u) dr = rts_world_spawn_from_blueprint(&app->world, "space_command_dreadnought", "Dreadnought Solaris", 1u, app->world.planet_frame_id, rts_v3d(0.0, R + 400000.0, 0.0), true);
+            sandbox_enter_entity_mega(app, dr, 0u);
+            rts_boarding_trigger_meltdown(&app->boarding, &app->world, dr, 60.0);
+            rts_crew_set_red_alert(&app->crew, &app->mega, &app->world, true);
+        } else if (si == 3) {
+            uint32_t sy = find_entity_by_blueprint(&app->world, "stn_orbital_shipyard", 1u);
+            if (sy == 0u) sy = rts_world_spawn_from_blueprint(&app->world, "stn_orbital_shipyard", "Orbital Shipyard Alpha", 1u, app->world.planet_frame_id, rts_v3d(0.0, R + 400000.0, 0.0), true);
+            sandbox_enter_entity_mega(app, sy, 0u);
+            rts_crew_set_red_alert(&app->crew, &app->mega, &app->world, true);
+        } else {
+            uint32_t cit = find_entity_by_blueprint(&app->world, "bldg_command_citadel", 1u);
+            if (cit != 0u) sandbox_enter_entity_mega(app, cit, 0u);
+        }
+        rts_renderer_set_live_status(&app->renderer, rts_scenario_title(si), "", rts_scenario_brief(si));
+    } else if (act == RTS_MENU_ACT_SAVE_SLOT) {
+        rts_menu_save_slot(&app->menu, app->menu.active_slot, ".", &app->world, &app->economy);
+        rts_renderer_set_live_status(&app->renderer, "PERSISTENT SAVE", "", app->menu.status_note);
+    } else if (act == RTS_MENU_ACT_LOAD_SLOT) {
+        if (rts_menu_load_slot(&app->menu, app->menu.active_slot, ".", &app->world, &app->economy)) {
+            app->view_mode = RTS_VIEW_SANDBOX_RTS;
+            rts_renderer_set_live_status(&app->renderer, "CAMPAIGN RESTORED", "", app->menu.status_note);
+        }
+    } else if (act == RTS_MENU_ACT_TOGGLE_MOD) {
+        if (strcmp(app->menu.active_mod_id, "example_mod") == 0) {
+            snprintf(app->menu.active_mod_id, sizeof(app->menu.active_mod_id), "none");
+            snprintf(app->menu.status_note, sizeof(app->menu.status_note), "MOD UNMOUNTED (BASE SOLARIS ROSTER)");
+        } else if (rts_vfs_mount_mod(&app->vfs, "example_mod")) {
+            snprintf(app->menu.active_mod_id, sizeof(app->menu.active_mod_id), "example_mod");
+            snprintf(app->menu.status_note, sizeof(app->menu.status_note), "MOUNTED EXTERNAL MOD: EXAMPLE_MOD (EMERALD VANGUARD)");
+        }
+    } else if (act == RTS_MENU_ACT_HOT_RELOAD) {
+        rts_lua_exec_vfs_script(&app->lua, "main.lua");
+        snprintf(app->menu.status_note, sizeof(app->menu.status_note), "LIVE VFS HOT-RELOAD EXECUTED CLEANLY!");
+    } else if (act == RTS_MENU_ACT_QUIT) {
+        app->running = false;
+    }
+}
+
 static void interactive_tick(void *arg) {
     InteractiveApp *app = (InteractiveApp *)arg;
     rts_input_begin_frame(&app->input);
@@ -412,13 +495,34 @@ static void interactive_tick(void *arg) {
                 app->renderer.height = nh;
                 rts_input_resize(&app->input, (float)nw, (float)nh);
             }
+        } else if (app->menu.screen != RTS_MENU_NONE) {
+            if (ev.type == SDL_EVENT_KEY_DOWN && !ev.key.repeat) {
+                if (ev.key.key == SDLK_UP || ev.key.key == SDLK_W) rts_menu_move_selection(&app->menu, -1);
+                else if (ev.key.key == SDLK_DOWN || ev.key.key == SDLK_S) rts_menu_move_selection(&app->menu, +1);
+                else if (ev.key.key == SDLK_RETURN || ev.key.key == SDLK_SPACE) handle_menu_action(app, rts_menu_activate(&app->menu));
+                else if (ev.key.key == SDLK_ESCAPE) rts_menu_back(&app->menu);
+                else if (ev.key.key >= SDLK_1 && ev.key.key <= SDLK_6) {
+                    int idx = (int)(ev.key.key - SDLK_1);
+                    if (idx < rts_menu_item_count(&app->menu)) {
+                        app->menu.selected_row = idx;
+                        handle_menu_action(app, rts_menu_activate(&app->menu));
+                    }
+                }
+            } else if (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN && ev.button.button == SDL_BUTTON_LEFT) {
+                RtsMenuAction act = rts_menu_click(&app->menu, ev.button.x, ev.button.y,
+                                                   (float)app->renderer.width, (float)app->renderer.height);
+                handle_menu_action(app, act);
+            }
+            continue;
         } else if (ev.type == SDL_EVENT_MOUSE_WHEEL && app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe) {
             rts_hologlobe_zoom(&app->holo, (double)ev.wheel.y * 0.25);
         } else if (ev.type == SDL_EVENT_KEY_DOWN && !ev.key.repeat) {
             rts_input_notify_kbm_activity(&app->input);
-#ifndef __EMSCRIPTEN__
-            if (ev.key.key == SDLK_ESCAPE) app->running = false;
-#endif
+            if (ev.key.key == SDLK_ESCAPE) {
+                app->menu.screen = RTS_MENU_PAUSE;
+                app->menu.selected_row = 0;
+                continue;
+            }
             if (ev.key.key == SDLK_L) {
                 app->view_mode = (app->view_mode == RTS_VIEW_TACTICAL) ? RTS_VIEW_SANDBOX_RTS : RTS_VIEW_TACTICAL;
             }
@@ -680,6 +784,12 @@ static void interactive_tick(void *arg) {
     }
 
     app->time_s += 1.0f / 60.0f;
+    if (app->menu.screen != RTS_MENU_NONE) {
+        rts_renderer_render_menu_screen(&app->renderer, &app->world, &app->menu, app->time_s);
+        SDL_GL_SwapWindow(app->window);
+        return;
+    }
+
     if (app->view_mode == RTS_VIEW_TACTICAL) {
         rts_tactical_step(&app->tactical, &tin, 1.0 / 60.0);
         rts_tactical_sync_to_world(&app->tactical, &app->world);
@@ -715,6 +825,13 @@ static void interactive_tick(void *arg) {
             rts_economy_step(&app->economy, &app->world, 1.0 / 60.0);
             rts_boarding_step(&app->boarding, &app->world, 1.0 / 60.0);
             rts_world_step(&app->world, 1.0 / 60.0);
+        }
+        if (app->world.match_state != RTS_MATCH_ACTIVE) {
+            app->menu.screen = RTS_MENU_MATCH_END;
+            app->menu.victory = (app->world.match_state == RTS_MATCH_VICTORY);
+            snprintf(app->menu.match_summary, sizeof(app->menu.match_summary), "%s",
+                     app->menu.victory ? "SOLARIS VICTORY - HOSTILE COMMAND NEUTRALIZED!"
+                                       : "IRONMAN DEFEAT - COMMANDER LOST IN ACTION");
         }
     } else {
         rts_economy_step(&app->economy, &app->world, 1.0 / 60.0);
@@ -1283,6 +1400,83 @@ int rts_platform_capture_milestone_011(const RtsAppConfig *cfg) {
            st.draw_calls, st.screenshots_saved, st.gl_errors);
     if (st.gl_errors != 0u) {
         fprintf(stderr, "[milestone_011] FAIL: OpenGL reported %u errors\n", st.gl_errors);
+        rc = 1;
+    }
+
+    shutdown_engine_stack(app);
+    free(app);
+    return rc;
+}
+
+static bool save_menu_shot(InteractiveApp *app, const char *dir, const char *name, float sim_t) {
+    rts_renderer_render_menu_screen(&app->renderer, &app->world, &app->menu, sim_t);
+    SDL_GL_SwapWindow(app->window);
+    rts_renderer_render_menu_screen(&app->renderer, &app->world, &app->menu, sim_t);
+    char path[512];
+    snprintf(path, sizeof(path), "%s/%s", dir, name);
+    bool ok = rts_renderer_capture_png(&app->renderer, path);
+    SDL_GL_SwapWindow(app->window);
+    if (ok) printf("[milestone_012] Saved %s\n", path);
+    return ok;
+}
+
+int rts_platform_capture_milestone_012(const RtsAppConfig *cfg) {
+    InteractiveApp *app = (InteractiveApp *)calloc(1, sizeof(InteractiveApp));
+    if (!app) return 1;
+
+    if (!init_sdl_gl(&app->window, &app->gl_ctx, cfg->width, cfg->height, false)) {
+        free(app);
+        return 1;
+    }
+    if (!init_engine_stack(app, cfg)) {
+        shutdown_engine_stack(app);
+        free(app);
+        return 1;
+    }
+
+    int rc = 0;
+
+    /* Shot 1: Default Startup Solaris Main Menu Over Live 3D Rotating Helios Prime & Orbital Shipyard */
+    app->menu.screen = RTS_MENU_MAIN;
+    app->menu.selected_row = 0;
+    if (!save_menu_shot(app, cfg->milestone_012_dir, "m012_01_solaris_main_menu.png", 1.8f)) rc = 1;
+
+    /* Shot 2: Planetary-to-Orbital Skirmish Setup Configurator (Ironman ON Default, Balanced AI Default) */
+    app->menu.screen = RTS_MENU_SKIRMISH_SETUP;
+    app->menu.selected_row = 3;
+    snprintf(app->menu.status_note, sizeof(app->menu.status_note),
+             "IRONMAN ON DEFAULT | BALANCED STRATEGIC AI | PHYSICAL CONVOY LOGISTICS ENABLED");
+    if (!save_menu_shot(app, cfg->milestone_012_dir, "m012_02_skirmish_setup_scenarios.png", 3.1f)) rc = 1;
+
+    /* Shot 3: Curated Scenario #3 — Escape the Flagship (60s Ironman Meltdown) Live Red-Alert Bridge */
+    app->menu.scenario_idx = 2;
+    app->menu.screen = RTS_MENU_NONE;
+    handle_menu_action(app, RTS_MENU_ACT_LAUNCH_SCENARIO);
+    app->world.commander.local_pos.y = 1.95;
+    app->world.commander.yaw_rad = 0.08;
+    app->world.commander.pitch_rad = -0.04;
+    if (!save_live_interior_shot(app, cfg->milestone_012_dir, "m012_03_escape_flagship_meltdown.png", 4.4f)) rc = 1;
+
+    /* Shot 4: Persistent 5-Slot Campaign Save/Load Browser */
+    app->menu.slots[0].occupied = true;
+    snprintf(app->menu.slots[0].label, sizeof(app->menu.slots[0].label), "IRONMAN SKIRMISH");
+    app->menu.slots[0].sim_time_s = 412.0;
+    app->menu.slots[0].entity_count = 24u;
+    app->menu.slots[1].occupied = true;
+    snprintf(app->menu.slots[1].label, sizeof(app->menu.slots[1].label), "CARRIER STRIKE");
+    app->menu.slots[1].sim_time_s = 185.0;
+    app->menu.slots[1].entity_count = 18u;
+    app->menu.screen = RTS_MENU_SAVE_LOAD;
+    app->menu.selected_row = 0;
+    snprintf(app->menu.status_note, sizeof(app->menu.status_note),
+             "PERSISTENT RTS_SAVE_V1 SLOTS (OS DISK ON DESKTOP | LOCALSTORAGE ON WEB)");
+    if (!save_menu_shot(app, cfg->milestone_012_dir, "m012_04_pause_save_slots.png", 5.6f)) rc = 1;
+
+    RtsGfxStats st = app->renderer.gfx.get_stats(app->renderer.gfx.state);
+    printf("[milestone_012] OpenGL draw calls: %u, screenshots: %u, gl_errors: %u\n",
+           st.draw_calls, st.screenshots_saved, st.gl_errors);
+    if (st.gl_errors != 0u) {
+        fprintf(stderr, "[milestone_012] FAIL: OpenGL reported %u errors\n", st.gl_errors);
         rc = 1;
     }
 
