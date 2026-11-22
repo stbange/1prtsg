@@ -67,6 +67,8 @@ typedef struct RtsInputIntent {
     bool designate_held;
     bool command_wheel_held;
     bool mag_boot_pressed;
+    bool jump_pressed;
+    bool crouch_pressed;
     bool holo_select_pressed;
     bool holo_order_pressed;
     float holo_zoom_delta;

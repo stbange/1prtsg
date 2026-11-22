@@ -1,8 +1,11 @@
 /* SPDX-License-Identifier: MIT */
+#include "rts/combat_sim.h"
 #include "rts/field_gear.h"
 #include "rts/hologlobe_ui.h"
 #include "rts/interior_gen.h"
 #include "rts/lua_vm.h"
+#include "rts/planet_mesh.h"
+#include "rts/vehicle_physics.h"
 #include "lauxlib.h"
 #include "lua.h"
 #include "lualib.h"
@@ -871,6 +874,50 @@ static int l_rts_facility_queue(lua_State *L) {
     return 2;
 }
 
+static int l_combat_emp_strike(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t shooter_id = (uint32_t)luaL_checkinteger(L, 1);
+    uint32_t target_id = (uint32_t)luaL_checkinteger(L, 2);
+    RtsCombatSim *cs = (RtsCombatSim *)calloc(1, sizeof(RtsCombatSim));
+    if (!cs) {
+        lua_pushinteger(L, 0);
+        lua_pushinteger(L, 0);
+        return 2;
+    }
+    rts_combat_init(cs);
+    rts_combat_apply_emp_prime(cs, vm->world, target_id, 6.0f);
+    rts_combat_fire(cs, vm->world, shooter_id, target_id, rts_v3d(0, 0, 0), RTS_WPN_ORBITAL_ION);
+    rts_combat_step(cs, vm->world, NULL, 0.05);
+    uint32_t combos = cs->emp_combo_hits;
+    size_t craters = cs->crater_count;
+    free(cs);
+    lua_pushinteger(L, (lua_Integer)combos);
+    lua_pushinteger(L, (lua_Integer)craters);
+    return 2;
+}
+
+static int l_physics_cargo_lift(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    uint32_t carrier_id = (uint32_t)luaL_checkinteger(L, 1);
+    uint32_t cargo_id = (uint32_t)luaL_checkinteger(L, 2);
+    RtsVehiclePhysicsState vp;
+    rts_vehicle_physics_init(&vp);
+    rts_vehicle_physics_bind(&vp, vm->world, carrier_id);
+    bool clamped = rts_vehicle_clamp_cargo(&vp, vm->world, carrier_id, cargo_id);
+    RtsInputIntent in;
+    memset(&in, 0, sizeof(in));
+    in.move_y = 1.0f;
+    in.jump_pressed = true;
+    for (int i = 0; i < 15; ++i) {
+        rts_vehicle_physics_step(&vp, vm->world, &in, 0.1);
+    }
+    const RtsEntity *ce = rts_world_get_entity_const(vm->world, cargo_id);
+    double cargo_alt = ce ? rts_planet_altitude(&vm->world->planet, ce->pos) : 0.0;
+    lua_pushboolean(L, clamped ? 1 : 0);
+    lua_pushnumber(L, cargo_alt);
+    return 2;
+}
+
 static void register_subtable(lua_State *L, const char *name, const luaL_Reg *funcs) {
     lua_newtable(L);
     luaL_setfuncs(L, funcs, 0);
@@ -1028,6 +1075,14 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
         {"facility_queue", l_rts_facility_queue},
         {NULL, NULL}
     };
+    static const luaL_Reg combat_funcs[] = {
+        {"emp_strike_test", l_combat_emp_strike},
+        {NULL, NULL}
+    };
+    static const luaL_Reg physics_funcs[] = {
+        {"cargo_lift_test", l_physics_cargo_lift},
+        {NULL, NULL}
+    };
 
     register_subtable(L, "vfs", vfs_funcs);
     register_subtable(L, "planet", planet_funcs);
@@ -1044,6 +1099,8 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
     register_subtable(L, "config", config_funcs);
     register_subtable(L, "save", save_funcs);
     register_subtable(L, "rts", rts_funcs);
+    register_subtable(L, "combat", combat_funcs);
+    register_subtable(L, "physics", physics_funcs);
     lua_setglobal(L, "engine");
     return true;
 }

@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: MIT */
+#include "rts/combat_sim.h"
 #include "rts/crew.h"
 #include "rts/field_gear.h"
 #include "rts/fun_eval.h"
@@ -7,9 +8,11 @@
 #include "rts/input.h"
 #include "rts/interior_gen.h"
 #include "rts/lua_vm.h"
+#include "rts/planet_mesh.h"
 #include "rts/platform.h"
 #include "rts/save_load.h"
 #include "rts/tactical_sim.h"
+#include "rts/vehicle_physics.h"
 #include "rts/vfs.h"
 #include "rts/voxel.h"
 #include "rts/world.h"
@@ -46,6 +49,8 @@ typedef struct InteractiveApp {
     RtsCrewDeckSim crew;
     RtsHoloGlobeState holo;
     RtsFieldGearState gear;
+    RtsCombatSim combat;
+    RtsVehiclePhysicsState vphys;
     RtsRetroRenderer renderer;
     RtsLuaVm lua;
     RtsShowcaseScene scene;
@@ -209,6 +214,8 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
     rts_crew_init(&app->crew);
     rts_hologlobe_init(&app->holo);
     rts_field_gear_init(&app->gear);
+    rts_combat_init(&app->combat);
+    rts_vehicle_physics_init(&app->vphys);
     RtsFeelConfig feel = cfg->fun_baseline ? rts_feel_config_baseline() : rts_feel_config_solaris();
     rts_tactical_init(&app->tactical, &feel, seed, &app->audio);
 
@@ -217,6 +224,7 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
         return false;
     }
     rts_renderer_set_rts_toolkit(&app->renderer, &app->holo, &app->gear, &app->economy);
+    rts_renderer_set_live_combat_physics(&app->renderer, &app->combat, &app->vphys);
     if (!rts_lua_init(&app->lua, &app->vfs, &app->world, &app->input, &app->voxel, &app->renderer)) {
         fprintf(stderr, "[platform_sdl] Lua VM init failed\n");
         return false;
@@ -530,6 +538,27 @@ static void interactive_tick(void *arg) {
                     tin.action_pressed[RTS_ACT_FLEET_STRIKE] = true;
                 }
             }
+            if (ev.key.key == SDLK_PERIOD && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
+                bool fighting = rts_combat_is_active(&app->combat, &app->world);
+                int f = rts_time_compression_cycle(&app->vphys, fighting);
+                char tw[128];
+                snprintf(tw, sizeof(tw), "TIME COMPRESSION %dX%s", f, fighting ? " (COMBAT ACTIVE - LOCKED AT 1X)" : " ACTIVE");
+                rts_renderer_set_live_status(&app->renderer, "TIME COMPRESSION", "", tw);
+            }
+            if (ev.key.key == SDLK_K && app->view_mode == RTS_VIEW_SANDBOX_RTS) {
+                uint32_t ds_id = find_entity_by_blueprint(&app->world, "air_dropship", 1u);
+                uint32_t tk_id = find_entity_by_blueprint(&app->world, "veh_plasma_tank", 1u);
+                if (app->vphys.clamped_cargo_id != 0u) {
+                    if (rts_vehicle_release_cargo(&app->vphys, &app->world)) {
+                        rts_renderer_set_live_status(&app->renderer, "DROPSHIP CARGO BAY", "", "RELEASED CLAMPED GROUND VEHICLE ONTO SURFACE!");
+                    }
+                } else if (ds_id != 0u && tk_id != 0u) {
+                    rts_vehicle_physics_bind(&app->vphys, &app->world, ds_id);
+                    if (rts_vehicle_clamp_cargo(&app->vphys, &app->world, ds_id, tk_id)) {
+                        rts_renderer_set_live_status(&app->renderer, "DROPSHIP CARGO BAY", "", "CLAMPED PLASMA TANK INSIDE DROPSHIP BAY FOR ORBITAL LIFT!");
+                    }
+                }
+            }
             if (ev.key.key == SDLK_H) tin.action_pressed[RTS_ACT_FIELD_REPAIR] = true;
             if (ev.key.key == SDLK_R || ev.key.key == SDLK_RETURN) {
                 if (ev.key.key == SDLK_R && app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe) {
@@ -590,6 +619,13 @@ static void interactive_tick(void *arg) {
                         rts_field_gear_designate_strike(&app->gear, &app->world, 1u);
                         rts_renderer_set_live_status(&app->renderer, "LASER DESIGNATOR", "", app->gear.last_status);
                     }
+                } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->ctrl.mode == RTS_CMD_PILOTING && app->ctrl.piloted_entity_id != 0u) {
+                    RtsRay wray = sandbox_commander_ray(app, true);
+                    const RtsEntity *pe = rts_world_get_entity_const(&app->world, app->ctrl.piloted_entity_id);
+                    if (pe) {
+                        RtsVec3d aim_pt = rts_v3d_add(wray.origin, rts_v3d_scale(wray.dir, 180.0));
+                        rts_combat_fire(&app->combat, &app->world, pe->id, 0u, aim_pt, rts_combat_weapon_for_entity(pe));
+                    }
                 } else {
                     tin.action_pressed[RTS_ACT_PLASMA_LANCE] = true;
                 }
@@ -612,6 +648,8 @@ static void interactive_tick(void *arg) {
         if (keys[SDL_SCANCODE_S]) { app->input.intent.move_y = -1.0f; tin.move_z = -1.0f; }
         if (keys[SDL_SCANCODE_A]) { app->input.intent.move_x = -1.0f; tin.move_x = -1.0f; }
         if (keys[SDL_SCANCODE_D]) { app->input.intent.move_x = 1.0f; tin.move_x = 1.0f; }
+        if (keys[SDL_SCANCODE_SPACE]) { app->input.intent.jump_pressed = true; }
+        if (keys[SDL_SCANCODE_LCTRL]) { app->input.intent.crouch_pressed = true; }
         if (keys[SDL_SCANCODE_LEFT])  { tin.aim_yaw -= 0.04f; app->input.intent.look_dx -= 0.04f; }
         if (keys[SDL_SCANCODE_RIGHT]) { tin.aim_yaw += 0.04f; app->input.intent.look_dx += 0.04f; }
     }
@@ -646,27 +684,43 @@ static void interactive_tick(void *arg) {
         rts_tactical_step(&app->tactical, &tin, 1.0 / 60.0);
         rts_tactical_sync_to_world(&app->tactical, &app->world);
     } else if (app->view_mode == RTS_VIEW_SANDBOX_RTS) {
-        rts_controller_step(&app->ctrl, &app->world, &app->input.intent, 1.0 / 60.0);
-        if (app->world.commander.at_holo_globe) {
-            sandbox_hologlobe_update_hover(app);
-        }
-        if (app->mega.total_rooms > 0u && app->world.commander.occupied_entity_id == app->mega.entity_id) {
-            rts_crew_step(&app->crew, &app->mega, &app->world, 1.0 / 60.0);
-        }
-        if (app->ctrl.astrogator.phase != RTS_AUTO_IDLE) {
-            RtsAutopilotPhase ph = rts_astrogator_step(&app->ctrl, &app->world, 1.0 / 60.0);
-            if (ph == RTS_AUTO_CIRCULARIZED) {
-                rts_renderer_set_live_status(&app->renderer, "400KM LEO ORBIT CIRCULARIZED", "",
-                                             "ORBIT ACHIEVED! PRESS [G] TO DOCK AT ORBITAL SHIPYARD ALPHA OR RE-ENTER.");
-            } else if (ph == RTS_AUTO_LANDED) {
-                rts_renderer_set_live_status(&app->renderer, "SURFACE TOUCHDOWN COMPLETE", "",
-                                             "DROPSHIP VALKYRIE-2 SAFELY LANDED ON HELIOS PRIME! PRESS [B] TO EXIT.");
+        bool fighting = rts_combat_is_active(&app->combat, &app->world);
+        int warp = rts_time_compression_set(&app->vphys, app->vphys.time_compression, fighting);
+        for (int ws = 0; ws < warp; ++ws) {
+            if (app->ctrl.mode == RTS_CMD_PILOTING && app->ctrl.piloted_entity_id != 0u) {
+                if (app->vphys.entity_id != app->ctrl.piloted_entity_id) {
+                    rts_vehicle_physics_bind(&app->vphys, &app->world, app->ctrl.piloted_entity_id);
+                }
+                rts_vehicle_physics_step(&app->vphys, &app->world, &app->input.intent, 1.0 / 60.0);
+            } else {
+                rts_controller_step(&app->ctrl, &app->world, &app->input.intent, 1.0 / 60.0);
             }
+            if (app->world.commander.at_holo_globe) {
+                sandbox_hologlobe_update_hover(app);
+            }
+            if (app->mega.total_rooms > 0u && app->world.commander.occupied_entity_id == app->mega.entity_id) {
+                rts_crew_step(&app->crew, &app->mega, &app->world, 1.0 / 60.0);
+            }
+            if (app->ctrl.astrogator.phase != RTS_AUTO_IDLE) {
+                RtsAutopilotPhase ph = rts_astrogator_step(&app->ctrl, &app->world, 1.0 / 60.0);
+                if (ph == RTS_AUTO_CIRCULARIZED) {
+                    rts_renderer_set_live_status(&app->renderer, "400KM LEO ORBIT CIRCULARIZED", "",
+                                                 "ORBIT ACHIEVED! PRESS [G] TO DOCK AT ORBITAL SHIPYARD ALPHA OR RE-ENTER.");
+                } else if (ph == RTS_AUTO_LANDED) {
+                    rts_renderer_set_live_status(&app->renderer, "SURFACE TOUCHDOWN COMPLETE", "",
+                                                 "DROPSHIP VALKYRIE-2 SAFELY LANDED ON HELIOS PRIME! PRESS [B] TO EXIT.");
+                }
+            }
+            rts_combat_step(&app->combat, &app->world, (app->mega.total_rooms > 0u) ? &app->mega : NULL, 1.0 / 60.0);
+            rts_economy_step(&app->economy, &app->world, 1.0 / 60.0);
+            rts_boarding_step(&app->boarding, &app->world, 1.0 / 60.0);
+            rts_world_step(&app->world, 1.0 / 60.0);
         }
+    } else {
+        rts_economy_step(&app->economy, &app->world, 1.0 / 60.0);
+        rts_boarding_step(&app->boarding, &app->world, 1.0 / 60.0);
+        rts_world_step(&app->world, 1.0 / 60.0);
     }
-    rts_economy_step(&app->economy, &app->world, 1.0 / 60.0);
-    rts_boarding_step(&app->boarding, &app->world, 1.0 / 60.0);
-    rts_world_step(&app->world, 1.0 / 60.0);
 
     if (xr_on) {
         rts_renderer_render_webxr_stereo(&app->renderer, &app->world, &app->input, &xr, app->time_s);
@@ -1101,6 +1155,134 @@ int rts_platform_capture_rts_toolkit(const RtsAppConfig *cfg) {
            st.draw_calls, st.screenshots_saved, st.gl_errors);
     if (st.gl_errors != 0u) {
         fprintf(stderr, "[rts_toolkit] FAIL: OpenGL reported %u errors\n", st.gl_errors);
+        rc = 1;
+    }
+
+    shutdown_engine_stack(app);
+    free(app);
+    return rc;
+}
+
+int rts_platform_capture_milestone_011(const RtsAppConfig *cfg) {
+    InteractiveApp *app = (InteractiveApp *)calloc(1, sizeof(InteractiveApp));
+    if (!app) return 1;
+
+    if (!init_sdl_gl(&app->window, &app->gl_ctx, cfg->width, cfg->height, false)) {
+        free(app);
+        return 1;
+    }
+    if (!init_engine_stack(app, cfg)) {
+        shutdown_engine_stack(app);
+        free(app);
+        return 1;
+    }
+
+    int rc = 0;
+    double R = app->world.planet.radius_m;
+
+    /* Shot 1: Continuous Spherical Multi-LOD Terrain, Shoreline & Animated Solaris Ocean Bay with Fleet Carrier + Attack Sub */
+    app->world.commander.at_holo_globe = false;
+    app->world.commander.frame_id = app->world.planet_frame_id;
+    app->world.commander.occupied_entity_id = 0u;
+    rts_renderer_set_active_interior(&app->renderer, NULL, NULL);
+
+    uint32_t carrier_id = rts_world_spawn_from_blueprint(&app->world, "ship_fleet_carrier", "Fleet Carrier Vanguard",
+                                                         1u, app->world.planet_frame_id, rts_v3d(175.0, R + 1.0, 22.0), true);
+    uint32_t sub_id = rts_world_spawn_from_blueprint(&app->world, "ship_attack_sub", "Submarine Abyss-3",
+                                                     1u, app->world.planet_frame_id, rts_v3d(145.0, R - 0.8, 52.0), true);
+    rts_vehicle_physics_bind(&app->vphys, &app->world, sub_id);
+    app->vphys.ballast_depth_m = -12.5;
+    app->vphys.wake_intensity = 0.78f;
+    app->vphys.wave_roll_rad = 0.035;
+    (void)carrier_id;
+
+    app->world.commander.local_pos = rts_v3d(78.0, R + 22.0, 68.0);
+    RtsVec3d bay_look = rts_v3d_sub(rts_v3d(165.0, R, 26.0), app->world.commander.local_pos);
+    app->world.commander.yaw_rad = atan2(bay_look.x, -bay_look.z);
+    app->world.commander.pitch_rad = -0.18;
+    rts_renderer_set_live_status(&app->renderer, "SPHERICAL MULTI-LOD TERRAIN & OCEAN", "",
+                                 "CONTINUOUS CUBE-SPHERE TERRAIN + ANIMATED SOLARIS OCEAN BAY | CARRIER & SUBMARINE BALLAST PHYSICS");
+    if (!save_live_interior_shot(app, cfg->milestone_011_dir, "m011_01_spherical_terrain_ocean.png", 2.1f)) rc = 1;
+
+    /* Shot 2: Heavy Vehicle Lifter Dropship VTOL Ascent With Clamped Plasma Tank Cargo */
+    uint32_t lifter_id = rts_world_spawn_from_blueprint(&app->world, "air_heavy_lifter", "Heavy Lifter Atlas-1",
+                                                        1u, app->world.planet_frame_id, rts_v3d(20.0, R + 24.0, 38.0), true);
+    uint32_t cargo_tank = rts_world_spawn_from_blueprint(&app->world, "veh_plasma_tank", "Clamped Vanguard Tank",
+                                                         1u, app->world.planet_frame_id, rts_v3d(20.0, R + 22.0, 38.0), false);
+    rts_vehicle_physics_bind(&app->vphys, &app->world, lifter_id);
+    rts_vehicle_clamp_cargo(&app->vphys, &app->world, lifter_id, cargo_tank);
+    app->vphys.vtol_blend = 0.72;
+    app->vphys.airspeed_mps = 34.0;
+    app->vphys.altitude_agl_m = 24.0;
+    RtsEntity *lf = rts_world_get_entity(&app->world, lifter_id);
+    RtsEntity *ct = rts_world_get_entity(&app->world, cargo_tank);
+    if (lf && ct) {
+        lf->pos = rts_v3d(20.0, R + 24.0, 38.0);
+        ct->pos = rts_v3d(20.0, R + 18.2, 38.0);
+    }
+    app->world.commander.local_pos = rts_v3d(-24.0, R + 16.0, 72.0);
+    RtsVec3d lf_look = rts_v3d_sub(rts_v3d(20.0, R + 21.0, 38.0), app->world.commander.local_pos);
+    app->world.commander.yaw_rad = atan2(lf_look.x, -lf_look.z);
+    app->world.commander.pitch_rad = 0.08;
+    rts_renderer_set_live_status(&app->renderer, "CLASS 3 VTOL & CARGO CLAMP PHYSICS", "",
+                                 "HEAVY LIFTER DROPSHIP [K] CLAMPING PLASMA TANK UNDER BAY FOR ORBITAL INSERTION!");
+    if (!save_live_interior_shot(app, cfg->milestone_011_dir, "m011_02_dropship_cargo_vtol.png", 3.4f)) rc = 1;
+
+    /* Shot 3: Unified Live 64-Bit Combat — EMP-Prime x2.4 Halo, Beam Lance, Orbital Ion Strike, Shield Ripples & Voxel Crater */
+    app->vphys.entity_id = 0u;
+    app->vphys.time_compression = 1;
+    uint32_t ion_id = rts_world_spawn_from_blueprint(&app->world, "bldg_orbital_cannon", "Solaris Ion Cannon",
+                                                     1u, app->world.planet_frame_id, rts_v3d(-34.0, R + 0.5, 42.0), false);
+    uint32_t enemy_a = rts_world_spawn_from_blueprint(&app->world, "veh_siege_hovertank", "Crimson Siege 1",
+                                                      2u, app->world.planet_frame_id, rts_v3d(34.0, R + 2.0, 44.0), false);
+    uint32_t enemy_b = rts_world_spawn_from_blueprint(&app->world, "veh_plasma_tank", "Crimson Raider 2",
+                                                      2u, app->world.planet_frame_id, rts_v3d(18.0, R + 2.0, 26.0), false);
+    uint32_t ally_t = rts_world_spawn_from_blueprint(&app->world, "veh_plasma_tank", "Vanguard Spear 1",
+                                                     1u, app->world.planet_frame_id, rts_v3d(-16.0, R + 2.0, 34.0), false);
+    rts_combat_apply_emp_prime(&app->combat, &app->world, enemy_a, 6.0f);
+    rts_combat_fire(&app->combat, &app->world, ion_id, enemy_a, rts_v3d(0, 0, 0), RTS_WPN_ORBITAL_ION);
+    rts_combat_fire(&app->combat, &app->world, ally_t, enemy_b, rts_v3d(0, 0, 0), RTS_WPN_BEAM_LANCE);
+    rts_combat_fire(&app->combat, &app->world, enemy_b, ally_t, rts_v3d(0, 0, 0), RTS_WPN_HOMING_TORPEDO);
+    rts_combat_fire(&app->combat, &app->world, ally_t, enemy_a, rts_v3d(0, 0, 0), RTS_WPN_EMP_PULSE);
+    rts_combat_step(&app->combat, &app->world, NULL, 0.04);
+    rts_combat_carve_voxel_crater(&app->combat, rts_v3d(4.0, R + 1.0, 56.0), 5.0f);
+
+    app->world.commander.local_pos = rts_v3d(4.0, R + 18.0, 96.0);
+    RtsVec3d cb_look = rts_v3d_sub(rts_v3d(4.0, R + 4.0, 38.0), app->world.commander.local_pos);
+    app->world.commander.yaw_rad = atan2(cb_look.x, -cb_look.z);
+    app->world.commander.pitch_rad = -0.22;
+    rts_renderer_set_live_status(&app->renderer, "UNIFIED 64-BIT LIVE COMBAT & VOXEL CRATERS", "",
+                                 "EMP-PRIME X2.4 SYNERGY, ORBITAL ION CANNON, BEAM LANCE, HEX-SHIELD RIPPLES & VOXEL CRATER!");
+    if (!save_live_interior_shot(app, cfg->milestone_011_dir, "m011_03_unified_live_combat_emp.png", 4.7f)) rc = 1;
+
+    /* Shot 4: Spacecraft 6-DOF Orbital Re-entry Over Curved Helios Prime Horizon With Plasma Heat Shield Cone */
+    uint32_t reentry_id = rts_world_spawn_from_blueprint(&app->world, "air_dropship", "Valkyrie Re-Entry",
+                                                         1u, app->world.planet_frame_id, rts_v3d(-8.0, R + 115000.0, -32.0), false);
+    RtsEntity *dr = rts_world_get_entity(&app->world, reentry_id);
+    if (dr) {
+        dr->vel = rts_v3d(0.0, -420.0, -5400.0);
+        dr->rot = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 0.55),
+                               rts_quat_from_axis_angle(rts_v3d(1, 0, 0), -0.28));
+        dr->orbital_mode = true;
+        rts_vehicle_physics_bind(&app->vphys, &app->world, dr->id);
+        app->vphys.prograde_dv_mps = 5416.0;
+        app->vphys.reentry_heat_wm2 = 186000.0;
+        app->vphys.reentry_glow = 0.88f;
+        app->vphys.time_compression = 4;
+    }
+    app->world.commander.local_pos = rts_v3d(14.0, R + 115009.0, 2.0);
+    RtsVec3d re_look = rts_v3d_sub(rts_v3d(-12.0, R + 114998.0, -36.0), app->world.commander.local_pos);
+    app->world.commander.yaw_rad = atan2(re_look.x, -re_look.z);
+    app->world.commander.pitch_rad = -0.18;
+    rts_renderer_set_live_status(&app->renderer, "6-DOF SPACECRAFT ORBITAL RE-ENTRY", "",
+                                 "ORBITAL ATMOSPHERIC RE-ENTRY: PLASMA HEAT ENVELOPE, CLOUD LAYER & 4X TIME COMPRESSION");
+    if (!save_live_interior_shot(app, cfg->milestone_011_dir, "m011_04_orbital_reentry_plasma.png", 6.2f)) rc = 1;
+
+    RtsGfxStats st = app->renderer.gfx.get_stats(app->renderer.gfx.state);
+    printf("[milestone_011] OpenGL draw calls: %u, screenshots: %u, gl_errors: %u\n",
+           st.draw_calls, st.screenshots_saved, st.gl_errors);
+    if (st.gl_errors != 0u) {
+        fprintf(stderr, "[milestone_011] FAIL: OpenGL reported %u errors\n", st.gl_errors);
         rc = 1;
     }
 

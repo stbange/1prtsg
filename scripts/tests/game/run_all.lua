@@ -186,4 +186,14 @@ expect(fjob > 0 and fcnt == 10, "Scenario 22: Tier 2 Foundry console failed to q
 expect(eco.advance_production(1.0, 20) >= 1, "Scenario 22: 1:1 Foundry gantry production failed to complete")
 expect(eco.get_spawned_unit(fjob) > 0, "Scenario 22: Completed 1:1 gantry construct failed to roll out")
 
-print("[Automated Game Tests] ALL 22 END-TO-END SCENARIOS PASSED!")
+-- Scenario 23: Class 3 Heavy Lifter Dropship Clamps Ground Tank & Ascends Smoothly
+local lifter = engine.world.spawn("air_heavy_lifter", "Atlas Lifter", 1, 25, 6371003, 25, true)
+local payload = engine.world.spawn("veh_plasma_tank", "Airlift Tank", 1, 25, 6371000, 25, false)
+local clamped_ok, lifted_alt = engine.physics.cargo_lift_test(lifter, payload)
+expect(clamped_ok and lifted_alt > 10.0, "Scenario 23: Dropship cargo clamp orbital lift physics failed")
+
+-- Scenario 24: Unified 64-Bit Live Combat EMP-Prime x2.4 Synergy & Destructible Voxel Crater Carving
+local emp_combos, voxel_craters = engine.combat.emp_strike_test(ACTIVE_MISSION.tank, ACTIVE_MISSION.enemy_tank)
+expect(emp_combos >= 1 and voxel_craters >= 1, "Scenario 24: Unified live combat EMP synergy or voxel crater failed")
+
+print("[Automated Game Tests] ALL 24 END-TO-END SCENARIOS PASSED!")

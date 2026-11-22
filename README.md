@@ -84,6 +84,22 @@ Command your planetary and orbital war effort strictly from first-person through
 
 ---
 
+## Spherical Planetary Terrain, Animated Oceans, 6-Class Vehicle Physics & Unified Live Combat (`src/planet_mesh.c`, `src/vehicle_physics.c`, `src/combat_sim.c`)
+
+- **Continuous Multi-LOD Spherical Terrain & Animated Oceans:** Dynamically generated camera-relative cube-sphere terrain tiles, alpine ridges, shoreline beaches, animated wave oceans, and high-altitude clouds smoothly scaling from 1m boots-on-ground up to full orbital planet horizon (`R = 6,371 km`) with zero floating-point jitter.
+- **6-Class Piloting, Dropship Cargo Clamping & Safe Time Compression:** Hover-cushion slope/turret physics for Ground Vehicles; ocean wave buoyancy & Submarine ballast diving (`Space`/`Ctrl`); VTOL hover-to-forward flight with **Dropship Cargo Bay Clamping (`K`)** to haul a Plasma Tank to orbit; and 6-DOF Newtonian spacecraft burns with atmospheric plasma re-entry heating + safe **`1x/2x/4x/8x` Time Compression (`.`)**.
+- **Unified 64-Bit Live-World Combat & Voxel Craters:** EMP-Prime (`x2.4` synergy), Orbital Ion Cannons, Continuous Beam Lances, Homing Torpedoes, AA Flak, directional Hex-Shield ripples, physical compartment hitboxes propagating subsystem breaches into `RtsMegaInterior` rooms for Engineers to weld-repair, and destructible voxel crater carving!
+
+| Multi-LOD Spherical Terrain, Ocean Bay & Submarine Ballast | Class 3 Heavy Lifter VTOL & Clamped Plasma Tank Cargo |
+| :---: | :---: |
+| ![Spherical Terrain and Ocean](docs/screenshots/m011_01_spherical_terrain_ocean.png) | ![Dropship VTOL Cargo Clamp](docs/screenshots/m011_02_dropship_cargo_vtol.png) |
+
+| Unified 64-Bit Live Combat, EMP x2.4, Ion Beam & Voxel Crater | 6-DOF Spacecraft Atmospheric Re-entry & 4x Time Warp |
+| :---: | :---: |
+| ![Unified Live Combat](docs/screenshots/m011_03_unified_live_combat_emp.png) | ![Orbital Reentry Plasma](docs/screenshots/m011_04_orbital_reentry_plasma.png) |
+
+---
+
 ## Complete Feature Matrix (Phases 1–4 + Solaris Art Direction + 76 Unique Models + 1–420 Room Mega-Interiors + Tier 1/2/3 RTS Toolkit)
 
 - **Exclusively First-Person Commander & Hardcore Ironman (`src/world.c`, `src/controller.c`):** Zero god-camera. Walk seamlessly across interconnected rooms through open bulkhead doorways inside 1:1 multi-deck interiors, ride vertical **Turbolifts** across up to 20 decks, interact with physical War Room **3D Planetary & Orbital Holo-Globes**, Factory Terminals, Pilot Seats, and Bridge Helms, take direct manual piloting control of any construct (then hand back to AI crew), and survive Critical Reactor Meltdowns via physical **Escape Pod** evacuation.

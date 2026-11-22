@@ -1,10 +1,13 @@
 /* SPDX-License-Identifier: MIT */
+#include "rts/combat_sim.h"
 #include "rts/crew.h"
 #include "rts/field_gear.h"
 #include "rts/gfx.h"
 #include "rts/hologlobe_ui.h"
 #include "rts/interior_gen.h"
+#include "rts/planet_mesh.h"
 #include "rts/tactical_sim.h"
+#include "rts/vehicle_physics.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -296,6 +299,13 @@ void rts_renderer_set_rts_toolkit(RtsRetroRenderer *rr, const RtsHoloGlobeState 
     rr->active_holo = holo;
     rr->active_gear = gear;
     rr->active_eco = eco;
+}
+
+void rts_renderer_set_live_combat_physics(RtsRetroRenderer *rr, const RtsCombatSim *combat,
+                                          const RtsVehiclePhysicsState *vphys) {
+    if (!rr) return;
+    rr->active_combat = combat;
+    rr->active_vphys = vphys;
 }
 
 static void draw_mesh(RtsRetroRenderer *rr, RtsGfxHandle sh, RtsGfxHandle mesh, RtsGfxHandle tex,
@@ -1848,6 +1858,163 @@ static void draw_facility_console_hud(RtsRetroRenderer *rr, RtsMat4f ortho, cons
     }
 }
 
+static RtsVertex g_planet_verts[2400];
+
+static void draw_spherical_planet_surface(RtsRetroRenderer *rr, RtsMat4f vp, const RtsWorld *world,
+                                          RtsVec3d cam_world, double alt_m, RtsVec3f light, float time_s) {
+    RtsQuatd idq = rts_quat_identity();
+    RtsPlanetLodSpec lod = rts_planet_select_lod(alt_m);
+    if (alt_m <= 80000.0) {
+        size_t tcnt = rts_planet_build_surface_patch(&world->planet, cam_world, lod, g_planet_verts, 2400u);
+        if (tcnt >= 3u) {
+            rr->gfx.update_mesh(rr->gfx.state, rr->mesh_dynamic_3d, g_planet_verts, tcnt);
+            draw_mesh(rr, rr->sh_mesh, rr->mesh_dynamic_3d, RTS_GFX_INVALID, vp, rts_mat4_identity(),
+                      (RtsVec4f){0.96f, 0.98f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        }
+        size_t ocnt = rts_planet_build_ocean_patch(&world->planet, cam_world, lod, time_s, g_planet_verts, 2400u);
+        if (ocnt >= 3u) {
+            rr->gfx.update_mesh(rr->gfx.state, rr->mesh_dynamic_3d, g_planet_verts, ocnt);
+            draw_mesh(rr, rr->sh_mesh, rr->mesh_dynamic_3d, rr->tex_ocean, vp, rts_mat4_identity(),
+                      (RtsVec4f){0.92f, 0.98f, 1.0f, 0.88f}, light, time_s, true, false, true, false, RTS_DRAW_TRIANGLES);
+        }
+        if (lod.render_clouds) {
+            size_t ccnt = rts_planet_build_cloud_patch(&world->planet, cam_world, time_s, g_planet_verts, 2400u);
+            if (ccnt >= 3u) {
+                rr->gfx.update_mesh(rr->gfx.state, rr->mesh_dynamic_3d, g_planet_verts, ccnt);
+                draw_mesh(rr, rr->sh_holo, rr->mesh_dynamic_3d, RTS_GFX_INVALID, vp, rts_mat4_identity(),
+                          (RtsVec4f){0.90f, 0.96f, 1.0f, 0.28f}, light, time_s, true, false, false, false, RTS_DRAW_TRIANGLES);
+            }
+        }
+    } else {
+        RtsQuatd orb_rot = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.72),
+                                        rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 1.35 + time_s * 0.01));
+        draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_planet_surface, vp,
+                  rts_mat4_from_quat_trs(orb_rot, (RtsVec3f){-95.0f, -150.0f, -260.0f}, (RtsVec3f){195.0f, 195.0f, 195.0f}),
+                  (RtsVec4f){0.88f, 0.95f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(orb_rot, (RtsVec3f){-95.0f, -150.0f, -260.0f}, (RtsVec3f){202.0f, 202.0f, 202.0f}),
+                  (RtsVec4f){0.24f, 0.88f, 1.0f, 0.30f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+        (void)idq;
+    }
+}
+
+static void draw_live_combat_vfx(RtsRetroRenderer *rr, RtsMat4f vp, const RtsWorld *world,
+                                 RtsVec3d cam_world, RtsVec3f light, float time_s) {
+    if (!rr->active_combat) return;
+    const RtsCombatSim *cs = rr->active_combat;
+    RtsQuatd idq = rts_quat_identity();
+
+    /* Live 64-bit Projectiles, Beam Lances, Torpedoes, AA Flak, Orbital Ion & EMP Pulses */
+    for (size_t i = 0; i < RTS_COMBAT_MAX_PROJ; ++i) {
+        const RtsLiveProjectile *p = &cs->projs[i];
+        if (!p->active) continue;
+        RtsVec3f prel = rts_v3d_relative_f(p->pos, cam_world);
+        if (prel.x * prel.x + prel.y * prel.y + prel.z * prel.z > 2400.0f * 2400.0f) continue;
+
+        RtsVec4f col = (p->faction_id == 2u) ? (RtsVec4f){1.0f, 0.24f, 0.40f, 1.0f} : (RtsVec4f){0.22f, 0.96f, 1.0f, 1.0f};
+        float width = 0.22f;
+        if (p->kind == RTS_WPN_EMP_PULSE) { col = (RtsVec4f){0.62f, 0.46f, 1.0f, 1.0f}; width = 0.36f; }
+        else if (p->kind == RTS_WPN_ORBITAL_ION) { col = (RtsVec4f){0.36f, 0.96f, 1.0f, 1.0f}; width = 0.72f; }
+        else if (p->kind == RTS_WPN_BEAM_LANCE) { col = (RtsVec4f){1.0f, 0.84f, 0.28f, 1.0f}; width = 0.44f; }
+        else if (p->kind == RTS_WPN_HOMING_TORPEDO) { col = (RtsVec4f){1.0f, 0.56f, 0.18f, 1.0f}; width = 0.32f; }
+
+        if (p->kind == RTS_WPN_BEAM_LANCE || p->kind == RTS_WPN_ORBITAL_ION) {
+            RtsVec3f orel = rts_v3d_relative_f(p->origin, cam_world);
+            draw_plasma_beam(rr, vp, orel, prel, width, col, time_s);
+        } else {
+            RtsVec3d tail_w = rts_v3d_sub(p->pos, rts_v3d_scale(rts_v3d_norm(p->vel), 5.5));
+            draw_plasma_beam(rr, vp, rts_v3d_relative_f(tail_w, cam_world), prel, width, col, time_s);
+        }
+    }
+
+    /* Directional Hex-Shield Impact Ripples & EMP-Primed Electric Halos */
+    for (size_t i = 0; i < RTS_COMBAT_MAX_RIPPLES; ++i) {
+        const RtsShieldRipple *rp = &cs->ripples[i];
+        if (!rp->active) continue;
+        const RtsEntity *e = rts_world_get_entity_const(world, rp->entity_id);
+        if (!e) continue;
+        RtsVec3f erel = rts_v3d_relative_f(e->pos, cam_world);
+        float rad = fmaxf(fmaxf(e->dimensions_m.x, e->dimensions_m.z) * 0.34f, 5.2f);
+        RtsVec4f scol = rp->emp_tint ? (RtsVec4f){0.64f, 0.44f, 1.0f, 0.52f * rp->intensity}
+                                     : (RtsVec4f){0.22f, 0.94f, 1.0f, 0.50f * rp->intensity};
+        draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(idq, erel, (RtsVec3f){rad, rad * 0.72f, rad}),
+                  scol, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+    }
+
+    for (size_t i = 0; i < world->entity_count && i < RTS_MAX_ENTITIES; ++i) {
+        const RtsEntity *e = &world->entities[i];
+        if (!e->active || cs->emp_prime_timer[i] <= 0.0f) continue;
+        RtsVec3f erel = rts_v3d_relative_f(e->pos, cam_world);
+        float rad = fmaxf(fmaxf(e->dimensions_m.x, e->dimensions_m.z) * 0.42f, 6.2f);
+        draw_mesh(rr, rr->sh_holo, rr->mesh_ring, RTS_GFX_INVALID, vp,
+                  rts_mat4_from_quat_trs(rts_quat_from_axis_angle(rts_v3d(0, 1, 0), time_s * 3.4),
+                                         (RtsVec3f){erel.x, erel.y + 1.8f, erel.z}, (RtsVec3f){rad, rad, rad}),
+                  (RtsVec4f){0.72f, 0.52f, 1.0f, 0.98f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
+    }
+
+    /* Carved Destructible Voxel Terrain Crater / Asteroid Patch */
+    if (cs->voxel_patch_initialized && cs->crater_count > 0u) {
+        size_t vc = rts_voxel_build_mesh(&cs->destructible_patch, (RtsVoxelVertex *)g_planet_verts, 2400u);
+        if (vc >= 3u) {
+            rr->gfx.update_mesh(rr->gfx.state, rr->mesh_dynamic_3d, g_planet_verts, vc);
+            RtsVec3f crel = rts_v3d_relative_f(cs->craters[0].world_pos, cam_world);
+            draw_mesh(rr, rr->sh_mesh, rr->mesh_dynamic_3d, RTS_GFX_INVALID, vp,
+                      rts_mat4_from_quat_trs(idq, (RtsVec3f){crel.x - 16.0f, crel.y - 6.0f, crel.z - 16.0f}, (RtsVec3f){1.0f, 1.0f, 1.0f}),
+                      (RtsVec4f){0.92f, 0.94f, 0.98f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
+        }
+    }
+
+    /* Plasma Re-Entry Heat Shield Envelope When Piloting Spacecraft in Upper Atmosphere */
+    if (rr->active_vphys && rr->active_vphys->reentry_glow > 0.05f) {
+        const RtsEntity *pe = rts_world_get_entity_const(world, rr->active_vphys->entity_id);
+        if (pe) {
+            RtsVec3f prel = rts_v3d_relative_f(pe->pos, cam_world);
+            float g = rr->active_vphys->reentry_glow;
+            draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
+                      rts_mat4_from_quat_trs(pe->rot, (RtsVec3f){prel.x, prel.y - 1.2f, prel.z}, (RtsVec3f){9.5f, 4.2f, 11.5f}),
+                      (RtsVec4f){1.0f, 0.44f + 0.30f * g, 0.14f, 0.55f * g}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
+        }
+    }
+}
+
+static void draw_vehicle_physics_hud(RtsRetroRenderer *rr, RtsMat4f ortho, const RtsWorld *world) {
+    if (!rr->active_vphys) return;
+    const RtsVehiclePhysicsState *vp = rr->active_vphys;
+    if (vp->entity_id == 0u && vp->time_compression <= 1 && vp->reentry_glow <= 0.02f) return;
+    const RtsEntity *e = rts_world_get_entity_const(world, vp->entity_id);
+
+    float bw = 720.0f, bh = 38.0f;
+    float bx = (float)rr->width * 0.5f - bw * 0.5f, by = 64.0f;
+    hud_border_box(rr, ortho, bx, by, bw, bh,
+                   (RtsVec4f){0.02f, 0.07f, 0.15f, 0.90f},
+                   (vp->reentry_glow > 0.1f) ? (RtsVec4f){1.0f, 0.46f, 0.20f, 0.98f} : (RtsVec4f){0.26f, 0.94f, 1.0f, 0.94f});
+
+    char line[160];
+    if (vp->reentry_glow > 0.05f) {
+        snprintf(line, sizeof(line), "6-DOF ORBITAL RE-ENTRY | VEL %.0FM/S | HEAT %.0FKW/M2 | WARP %dX",
+                 vp->prograde_dv_mps, vp->reentry_heat_wm2 * 0.001, vp->time_compression);
+    } else if (e && e->construct_class == RTS_CLASS_AIRCRAFT) {
+        snprintf(line, sizeof(line), "VTOL %.0f%% | AIRSPEED %.0FM/S | AGL %.0FM | CARGO BAY:%s | WARP %dX",
+                 vp->vtol_blend * 100.0, vp->airspeed_mps, vp->altitude_agl_m,
+                 vp->clamped_cargo_id ? "CLAMPED" : "OPEN", vp->time_compression);
+    } else if (e && e->construct_class == RTS_CLASS_NAVAL_SHIP) {
+        snprintf(line, sizeof(line), "%s | DEPTH %.1FM | ROLL %.1f DEG | WAKE %.0f%% | WARP %dX",
+                 vp->is_submarine ? "SUBMARINE BALLAST" : "NAVAL BUOYANCY",
+                 vp->ballast_depth_m, vp->wave_roll_rad * 57.3, (double)vp->wake_intensity * 100.0, vp->time_compression);
+    } else if (e && e->construct_class == RTS_CLASS_GROUND_VEHICLE) {
+        snprintf(line, sizeof(line), "HOVER %.1FM | SLOPE %.1f DEG | TURRET %.0f DEG | WARP %dX",
+                 vp->hover_clearance_m, vp->slope_pitch_rad * 57.3, vp->turret_yaw_rad * 57.3, vp->time_compression);
+    } else {
+        snprintf(line, sizeof(line), "TIME COMPRESSION %dX %s| 6-DOF FLIGHT TELEMETRY READY",
+                 vp->time_compression, vp->time_warp_blocked_combat ? "(COMBAT LOCK 1X) " : "");
+    }
+    char lup[128];
+    upper_trunc_copy(lup, sizeof(lup), line, 86);
+    hud_text(rr, ortho, bx + 14.0f, by + 13.0f, 1.0f,
+             (vp->reentry_glow > 0.1f) ? (RtsVec4f){1.0f, 0.72f, 0.30f, 1.0f} : (RtsVec4f){0.42f, 0.98f, 0.96f, 1.0f}, lup);
+}
+
 void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world, const RtsInputRouter *input, float time_s) {
     if (!rr || !rr->initialized || !world) return;
     float aspect = (float)rr->width / (float)(rr->height > 0 ? rr->height : 1);
@@ -1878,22 +2045,8 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
                         in_orbit ? (RtsVec4f){0.02f, 0.02f, 0.06f, 1.0f} : (RtsVec4f){0.04f, 0.09f, 0.18f, 1.0f});
     draw_sky_dome(rr, vp, (RtsVec3f){0, 0, 0}, sun, red_alert ? 2.0f : (in_orbit ? 1.0f : 0.0f), time_s);
 
-    /* Surface terrain apron when near planetary surface, or illuminated Helios Prime limb when in LEO orbit */
-    if (!in_orbit) {
-        RtsVec3f ground_rel = rts_v3d_relative_f(rts_v3d(0.0, world->planet.radius_m - 0.5, 0.0), cam_world);
-        draw_mesh(rr, rr->sh_mesh, rr->mesh_terrain, RTS_GFX_INVALID, vp,
-                  rts_mat4_from_quat_trs(idq, ground_rel, (RtsVec3f){1.2f, 1.0f, 1.2f}),
-                  (RtsVec4f){0.86f, 0.90f, 0.96f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
-    } else {
-        RtsQuatd orb_rot = rts_quat_mul(rts_quat_from_axis_angle(rts_v3d(1, 0, 0), 0.72),
-                                        rts_quat_from_axis_angle(rts_v3d(0, 1, 0), 1.35 + time_s * 0.01));
-        draw_mesh(rr, rr->sh_mesh, rr->mesh_sphere, rr->tex_planet_surface, vp,
-                  rts_mat4_from_quat_trs(orb_rot, (RtsVec3f){-95.0f, -150.0f, -260.0f}, (RtsVec3f){195.0f, 195.0f, 195.0f}),
-                  (RtsVec4f){0.86f, 0.94f, 1.0f, 1.0f}, light, time_s, false, false, true, false, RTS_DRAW_TRIANGLES);
-        draw_mesh(rr, rr->sh_shield, rr->mesh_sphere, RTS_GFX_INVALID, vp,
-                  rts_mat4_from_quat_trs(orb_rot, (RtsVec3f){-95.0f, -150.0f, -260.0f}, (RtsVec3f){201.0f, 201.0f, 201.0f}),
-                  (RtsVec4f){0.24f, 0.88f, 1.0f, 0.34f}, light, time_s, true, true, false, false, RTS_DRAW_TRIANGLES);
-    }
+    /* Continuous Multi-LOD Spherical Planetary Terrain, Animated Ocean & Orbital Cloud Deck */
+    draw_spherical_planet_surface(rr, vp, world, cam_world, alt_m, light, time_s);
 
     /* Render Hydrated Multi-Room Interior Architecture, Ceilings, Doorways, Props, Consoles & All Staffed 12-Role Crew */
     bool inside_construct = (world->commander.frame_id != world->planet_frame_id &&
@@ -2070,6 +2223,9 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
     /* Tier 2 Live 1:1 Progressive Gantry Assembly for Active Production Jobs */
     draw_live_gantry_assemblies(rr, vp, world, cam_world, light, time_s);
 
+    /* Unified 64-Bit Live Combat VFX (Projectiles, Beam Lances, Shield Ripples, EMP Rings, Voxel Craters & Re-entry Cone) */
+    draw_live_combat_vfx(rr, vp, world, cam_world, light, time_s);
+
     /* Tier 1b Live 3D Laser Designator Beacon Spire in World Space */
     if (rr->active_gear && rr->active_gear->paint_active) {
         RtsVec3f lrel = rts_v3d_relative_f(rr->active_gear->painted_world_pos, cam_world);
@@ -2080,7 +2236,7 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
                   (RtsVec4f){1.0f, 0.84f, 0.28f, 0.98f}, light, time_s, false, true, false, false, RTS_DRAW_LINES);
     }
 
-    /* Seamless Sandbox RTS HUD: Minimap + Tier 1/2/3 Diegetic Toolkit Overlays */
+    /* Seamless Sandbox RTS HUD: Minimap + Tier 1/2/3 Diegetic Toolkit + 6-Class Flight Telemetry */
     float w = (float)rr->width, h = (float)rr->height;
     RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
 
@@ -2091,6 +2247,7 @@ void rts_renderer_render_live_world(RtsRetroRenderer *rr, const RtsWorld *world,
     draw_optics_hud(rr, ortho);
     draw_radial_wheel_hud(rr, ortho);
     draw_facility_console_hud(rr, ortho, world);
+    draw_vehicle_physics_hud(rr, ortho, world);
 
     const RtsEntity *occ = rts_world_get_entity_const(world, world->commander.occupied_entity_id);
     const RtsInteriorRoom *room = rts_interior_find_room_at(&world->interiors, world->commander.frame_id, world->commander.local_pos);
