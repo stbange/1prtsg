@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 cmake_minimum_required(VERSION 3.24)
-project(1prtsg VERSION 0.1.0 LANGUAGES C)
+project(1prtsg VERSION 1.0.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -187,6 +187,7 @@ add_library(rts_core STATIC
     src/vehicle_physics.c
     src/combat_sim.c
     src/ui_menus.c
+    src/mod_manager.c
     src/platform_webxr.c
     src/world.c
     src/voxel.c
@@ -287,6 +288,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         tests/test_planet_physics_combat.c
         tests/test_skirmish_menus.c
         tests/test_webxr_mobile.c
+        tests/test_audio_mods.c
         tests/test_world.c
         tests/test_voxel.c
         tests/test_input.c

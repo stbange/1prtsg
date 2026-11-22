@@ -47,6 +47,12 @@ typedef struct RtsWavPcm {
     size_t sample_count;
 } RtsWavPcm;
 
+typedef enum RtsMusicState {
+    RTS_MUSIC_SOLARIS_ORBIT = 0,
+    RTS_MUSIC_SURFACE_COMMAND = 1,
+    RTS_MUSIC_RED_ALERT_BATTLE = 2
+} RtsMusicState;
+
 typedef struct RtsAudioEngine {
     RtsAudioBackend backend;
     const RtsVfs *vfs;
@@ -55,6 +61,8 @@ typedef struct RtsAudioEngine {
     double listener_altitude_m;
     float interior_muffle;
     bool initialized;
+    RtsMusicState music_state;
+    double music_cooldown_s;
     RtsAudioVoice last_voice;
 } RtsAudioEngine;
 
@@ -68,5 +76,12 @@ bool rts_audio_init(RtsAudioEngine *ae, RtsAudioBackend backend, const RtsVfs *v
 void rts_audio_shutdown(RtsAudioEngine *ae);
 void rts_audio_set_listener(RtsAudioEngine *ae, RtsVec3d world_pos, RtsVec3d right_axis, double altitude_m, float interior_muffle);
 RtsAudioVoice rts_audio_play_3d(RtsAudioEngine *ae, const RtsPlanetConfig *planet, const char *wav_vfs_path, RtsVec3d src_pos, RtsAudioChannel channel, float base_gain, float max_dist_m);
+
+/* Milestone 014: Full 27-asset external CC BY 4.0 SFX + adaptive Solaris music helpers */
+size_t rts_audio_catalog_count(void);
+const char *rts_audio_catalog_path(size_t index);
+const char *rts_audio_music_track_path(RtsMusicState state);
+bool rts_audio_update_music(RtsAudioEngine *ae, RtsMusicState target_state, double dt_s);
+RtsAudioVoice rts_audio_play_event(RtsAudioEngine *ae, const RtsPlanetConfig *planet, const char *event_name, RtsVec3d src_pos, RtsAudioChannel channel);
 
 #endif /* RTS_AUDIO_H */

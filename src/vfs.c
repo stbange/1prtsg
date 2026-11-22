@@ -139,6 +139,12 @@ bool rts_vfs_mount_mod(RtsVfs *vfs, const char *mod_folder_name) {
     if (!vfs || !rts_vfs_validate_path(mod_folder_name) || vfs->mod_count >= RTS_VFS_MAX_MODS) {
         return false;
     }
+    for (size_t i = 0; i < vfs->mod_count; ++i) {
+        if (strcmp(vfs->mods[i].id, mod_folder_name) == 0) {
+            vfs->mods[i].enabled = true;
+            return true;
+        }
+    }
     char manifest_path[RTS_VFS_MAX_PATH];
     int written = snprintf(manifest_path, sizeof(manifest_path), "%s/mods/%s/mod.json", vfs->base_dir, mod_folder_name);
     if (written <= 0 || (size_t)written >= sizeof(manifest_path)) {
@@ -169,6 +175,27 @@ bool rts_vfs_mount_mod(RtsVfs *vfs, const char *mod_folder_name) {
     free(buf);
     vfs->mod_count++;
     return true;
+}
+
+bool rts_vfs_unmount_mod(RtsVfs *vfs, const char *mod_folder_name) {
+    if (!vfs || !mod_folder_name) return false;
+    for (size_t i = 0; i < vfs->mod_count; ++i) {
+        if (strcmp(vfs->mods[i].id, mod_folder_name) == 0) {
+            for (size_t j = i + 1; j < vfs->mod_count; ++j) {
+                vfs->mods[j - 1] = vfs->mods[j];
+            }
+            vfs->mod_count--;
+            memset(&vfs->mods[vfs->mod_count], 0, sizeof(RtsModInfo));
+            return true;
+        }
+    }
+    return false;
+}
+
+void rts_vfs_clear_mods(RtsVfs *vfs) {
+    if (!vfs) return;
+    memset(vfs->mods, 0, sizeof(vfs->mods));
+    vfs->mod_count = 0u;
 }
 
 bool rts_vfs_resolve(const RtsVfs *vfs, const char *category, const char *logical_path, char *out_os_path, size_t out_cap) {

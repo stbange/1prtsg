@@ -3,6 +3,7 @@
 #define RTS_UI_MENUS_H
 
 #include "rts/economy.h"
+#include "rts/mod_manager.h"
 #include "rts/world.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -55,6 +56,10 @@ typedef struct RtsMenuState {
     int planet_radius_preset;   /* 0 = 1,200km Moon, 1 = 6,371km Helios Prime, 2 = 12,000km Super-Earth */
     char active_mod_id[64];
 
+    /* Dynamic External Mod Browser */
+    RtsModCatalog mod_catalog;
+    int selected_mod_idx;
+
     /* Curated Scenario & Sandbox Construct Selection */
     int scenario_idx;           /* 0..3 */
     int sandbox_bp_idx;         /* 0..75 across all 76 enterable constructs */
@@ -70,6 +75,7 @@ typedef struct RtsMenuState {
 } RtsMenuState;
 
 void rts_menu_init(RtsMenuState *ms);
+void rts_menu_sync_mods(RtsMenuState *ms, const RtsVfs *vfs);
 
 /* Screen metadata & item labels for rendering and keyboard/mouse input */
 const char *rts_menu_screen_title(RtsMenuScreen screen);

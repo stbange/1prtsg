@@ -196,3 +196,89 @@ RtsAudioVoice rts_audio_play_3d(RtsAudioEngine *ae, const RtsPlanetConfig *plane
     rts_wav_free(&wav);
     return v;
 }
+
+static const char *const k_audio_catalog[] = {
+    "audio/alert_klaxon.wav",
+    "audio/docking_clamp.wav",
+    "audio/engine_hum.wav",
+    "audio/plasma_bolt.wav",
+    "audio/footstep_metal.wav",
+    "audio/airlock_hiss.wav",
+    "audio/turbolift_chime.wav",
+    "audio/beam_lance.wav",
+    "audio/torpedo_launch.wav",
+    "audio/aa_flak.wav",
+    "audio/orbital_ion_cannon.wav",
+    "audio/shield_ripple.wav",
+    "audio/emp_shockwave.wav",
+    "audio/hull_decompression.wav",
+    "audio/escape_pod_launch.wav",
+    "audio/welding_arc.wav",
+    "audio/explosion_hull.wav",
+    "audio/radar_ping.wav",
+    "audio/comms_bleep.wav",
+    "audio/ui_click.wav",
+    "audio/thruster_burn.wav",
+    "audio/ocean_splash.wav",
+    "audio/hangar_bay_door.wav",
+    "audio/victory_fanfare.wav",
+    "audio/music_solaris_orbit.wav",
+    "audio/music_surface_command.wav",
+    "audio/music_red_alert_battle.wav"
+};
+
+size_t rts_audio_catalog_count(void) {
+    return sizeof(k_audio_catalog) / sizeof(k_audio_catalog[0]);
+}
+
+const char *rts_audio_catalog_path(size_t index) {
+    if (index >= rts_audio_catalog_count()) return NULL;
+    return k_audio_catalog[index];
+}
+
+const char *rts_audio_music_track_path(RtsMusicState state) {
+    switch (state) {
+        case RTS_MUSIC_SURFACE_COMMAND:  return "audio/music_surface_command.wav";
+        case RTS_MUSIC_RED_ALERT_BATTLE: return "audio/music_red_alert_battle.wav";
+        case RTS_MUSIC_SOLARIS_ORBIT:
+        default:                         return "audio/music_solaris_orbit.wav";
+    }
+}
+
+bool rts_audio_update_music(RtsAudioEngine *ae, RtsMusicState target_state, double dt_s) {
+    if (!ae || !ae->initialized) return false;
+    bool state_changed = (ae->music_state != target_state);
+    ae->music_state = target_state;
+    ae->music_cooldown_s -= (dt_s > 0.0 ? dt_s : 0.0);
+    if (!state_changed && ae->music_cooldown_s > 0.0) {
+        return false;
+    }
+    ae->music_cooldown_s = 3.2;
+    RtsAudioVoice v = rts_audio_play_3d(ae, NULL, rts_audio_music_track_path(target_state),
+                                        ae->listener_pos, RTS_AUD_RADIO_COMMS, 0.28f, 100.0f);
+    return v.audible;
+}
+
+RtsAudioVoice rts_audio_play_event(RtsAudioEngine *ae, const RtsPlanetConfig *planet,
+                                   const char *event_name, RtsVec3d src_pos, RtsAudioChannel channel) {
+    const char *path = "audio/ui_click.wav";
+    if (event_name) {
+        if (strcmp(event_name, "plasma") == 0)             path = "audio/plasma_bolt.wav";
+        else if (strcmp(event_name, "beam") == 0)          path = "audio/beam_lance.wav";
+        else if (strcmp(event_name, "torpedo") == 0)       path = "audio/torpedo_launch.wav";
+        else if (strcmp(event_name, "flak") == 0)          path = "audio/aa_flak.wav";
+        else if (strcmp(event_name, "orbital_ion") == 0)   path = "audio/orbital_ion_cannon.wav";
+        else if (strcmp(event_name, "emp") == 0)           path = "audio/emp_shockwave.wav";
+        else if (strcmp(event_name, "shield") == 0)        path = "audio/shield_ripple.wav";
+        else if (strcmp(event_name, "klaxon") == 0)        path = "audio/alert_klaxon.wav";
+        else if (strcmp(event_name, "docking") == 0)       path = "audio/docking_clamp.wav";
+        else if (strcmp(event_name, "footstep") == 0)      path = "audio/footstep_metal.wav";
+        else if (strcmp(event_name, "airlock") == 0)       path = "audio/airlock_hiss.wav";
+        else if (strcmp(event_name, "turbolift") == 0)     path = "audio/turbolift_chime.wav";
+        else if (strcmp(event_name, "decompression") == 0) path = "audio/hull_decompression.wav";
+        else if (strcmp(event_name, "escape_pod") == 0)    path = "audio/escape_pod_launch.wav";
+        else if (strcmp(event_name, "explosion") == 0)     path = "audio/explosion_hull.wav";
+        else if (strcmp(event_name, "victory") == 0)       path = "audio/victory_fanfare.wav";
+    }
+    return rts_audio_play_3d(ae, planet, path, src_pos, channel, 0.85f, 450.0f);
+}

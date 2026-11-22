@@ -35,6 +35,8 @@ RtsFsBackend rts_fs_os_backend(void);
 bool rts_vfs_validate_path(const char *logical_path);
 bool rts_vfs_init(RtsVfs *vfs, const char *base_dir, const RtsFsBackend *custom_fs);
 bool rts_vfs_mount_mod(RtsVfs *vfs, const char *mod_folder_name);
+bool rts_vfs_unmount_mod(RtsVfs *vfs, const char *mod_folder_name);
+void rts_vfs_clear_mods(RtsVfs *vfs);
 bool rts_vfs_resolve(const RtsVfs *vfs, const char *category, const char *logical_path, char *out_os_path, size_t out_cap);
 bool rts_vfs_exists(const RtsVfs *vfs, const char *category, const char *logical_path);
 bool rts_vfs_read_bytes(const RtsVfs *vfs, const char *category, const char *logical_path, uint8_t **out_data, size_t *out_size);

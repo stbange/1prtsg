@@ -59,6 +59,26 @@ void rts_menu_init(RtsMenuState *ms) {
     snprintf(ms->status_note, sizeof(ms->status_note), "COMMAND A PLANETARY-TO-ORBITAL EMPIRE FROM THE BOOTS UP");
 }
 
+void rts_menu_sync_mods(RtsMenuState *ms, const RtsVfs *vfs) {
+    if (!ms || !vfs) return;
+    rts_mod_manager_scan(&ms->mod_catalog, vfs);
+    ms->active_mod_id[0] = '\0';
+    for (size_t i = 0; i < ms->mod_catalog.count; ++i) {
+        if (ms->mod_catalog.entries[i].enabled) {
+            snprintf(ms->active_mod_id, sizeof(ms->active_mod_id), "%s", ms->mod_catalog.entries[i].id);
+            break;
+        }
+    }
+    if (ms->active_mod_id[0] == '\0') {
+        snprintf(ms->active_mod_id, sizeof(ms->active_mod_id), "none");
+    }
+}
+
+static int menu_visible_mod_rows(const RtsMenuState *ms) {
+    if (!ms || ms->mod_catalog.count == 0u) return 1;
+    return ms->mod_catalog.count <= 4u ? (int)ms->mod_catalog.count : 4;
+}
+
 const char *rts_scenario_id(int idx) {
     if (idx < 0 || idx >= 4) return k_scenario_ids[0];
     return k_scenario_ids[idx];
@@ -103,7 +123,7 @@ int rts_menu_item_count(const RtsMenuState *ms) {
         case RTS_MENU_SCENARIOS:      return 5;
         case RTS_MENU_SANDBOX_PICKER: return 4;
         case RTS_MENU_SAVE_LOAD:      return RTS_SAVE_SLOT_COUNT + 1;
-        case RTS_MENU_MODS:           return 3;
+        case RTS_MENU_MODS:           return menu_visible_mod_rows(ms) + 2;
         case RTS_MENU_PAUSE:          return 5;
         case RTS_MENU_MATCH_END:      return 2;
         case RTS_MENU_NONE:
@@ -168,13 +188,22 @@ void rts_menu_item_label(const RtsMenuState *ms, const RtsWorld *world, int idx,
                 snprintf(out_buf, cap, "< BACK");
             }
             break;
-        case RTS_MENU_MODS:
-            switch (idx) {
-                case 0: snprintf(out_buf, cap, "ACTIVE MOD: %s (CLICK TO TOGGLE EXAMPLE_MOD)", ms->active_mod_id); break;
-                case 1: snprintf(out_buf, cap, "TRIGGER LIVE VFS HOT-RELOAD"); break;
-                default: snprintf(out_buf, cap, "< BACK"); break;
+        case RTS_MENU_MODS: {
+            int mrows = menu_visible_mod_rows(ms);
+            if (ms->mod_catalog.count == 0u) {
+                if (idx == 0) snprintf(out_buf, cap, "ACTIVE MOD: %s (CLICK TO TOGGLE EXAMPLE_MOD)", ms->active_mod_id);
+                else if (idx == 1) snprintf(out_buf, cap, ">> APPLY & LIVE VFS HOT-RELOAD <<");
+                else snprintf(out_buf, cap, "< BACK");
+            } else if (idx >= 0 && idx < mrows) {
+                const RtsModCatalogEntry *me = &ms->mod_catalog.entries[idx];
+                snprintf(out_buf, cap, "[%s] %.30s V%.8s", me->enabled ? "ON " : "OFF", me->name, me->version);
+            } else if (idx == mrows) {
+                snprintf(out_buf, cap, ">> APPLY & LIVE HOT-RELOAD (LUA + TEXTURES) <<");
+            } else {
+                snprintf(out_buf, cap, "< BACK");
             }
             break;
+        }
         case RTS_MENU_PAUSE:
             switch (idx) {
                 case 0: snprintf(out_buf, cap, "RESUME COMMAND [ESC]"); break;
@@ -255,11 +284,16 @@ RtsMenuAction rts_menu_activate(RtsMenuState *ms) {
             }
             rts_menu_back(ms);
             return RTS_MENU_ACT_NONE;
-        case RTS_MENU_MODS:
-            if (row == 0) return RTS_MENU_ACT_TOGGLE_MOD;
-            if (row == 1) return RTS_MENU_ACT_HOT_RELOAD;
+        case RTS_MENU_MODS: {
+            int mrows = menu_visible_mod_rows(ms);
+            if (row >= 0 && row < mrows) {
+                ms->selected_mod_idx = row;
+                return RTS_MENU_ACT_TOGGLE_MOD;
+            }
+            if (row == mrows) return RTS_MENU_ACT_HOT_RELOAD;
             rts_menu_back(ms);
             return RTS_MENU_ACT_NONE;
+        }
         case RTS_MENU_PAUSE:
             if (row == 0) { ms->screen = RTS_MENU_NONE; return RTS_MENU_ACT_RESUME; }
             if (row == 1) { ms->active_slot = 0; return RTS_MENU_ACT_SAVE_SLOT; }

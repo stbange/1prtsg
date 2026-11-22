@@ -4,6 +4,7 @@
 #include "rts/hologlobe_ui.h"
 #include "rts/interior_gen.h"
 #include "rts/lua_vm.h"
+#include "rts/mod_manager.h"
 #include "rts/planet_mesh.h"
 #include "rts/platform.h"
 #include "rts/vehicle_physics.h"
@@ -575,6 +576,44 @@ static int l_audio_set_listener(lua_State *L) {
     return 0;
 }
 
+static int l_audio_test_suite_and_mods(lua_State *L) {
+    RtsLuaVm *vm = get_vm(L);
+    size_t wavs_ok = 0u;
+    bool music_ok = false;
+    if (vm->audio && vm->vfs) {
+        rts_audio_set_listener(vm->audio, rts_v3d(0.0, vm->world->planet.radius_m, 0.0),
+                               rts_v3d(1.0, 0.0, 0.0), 0.0, 0.0f);
+        size_t n = rts_audio_catalog_count();
+        for (size_t i = 0; i < n; ++i) {
+            const char *p = rts_audio_catalog_path(i);
+            if (p && rts_vfs_exists(vm->vfs, "assets", p)) {
+                RtsAudioVoice v = rts_audio_play_3d(vm->audio, &vm->world->planet, p,
+                                                    rts_v3d(5.0, vm->world->planet.radius_m, 0.0),
+                                                    RTS_AUD_RADIO_COMMS, 0.5f, 200.0f);
+                if (v.audible) wavs_ok++;
+            }
+        }
+        music_ok = rts_audio_update_music(vm->audio, RTS_MUSIC_RED_ALERT_BATTLE, 3.5);
+    }
+
+    RtsModCatalog cat;
+    size_t found = vm->vfs ? rts_mod_manager_scan(&cat, vm->vfs) : 0u;
+    bool hot_ok = false;
+    if (vm->vfs && found >= 2u) {
+        bool was_on = cat.entries[0].enabled;
+        bool t1 = rts_mod_manager_toggle(&cat, vm->vfs, 0u);
+        bool r1 = rts_mod_manager_hot_reload(vm->vfs, NULL, vm->renderer);
+        bool t2 = (cat.entries[0].enabled != was_on) ? rts_mod_manager_toggle(&cat, vm->vfs, 0u) : true;
+        hot_ok = t1 && r1 && t2;
+    }
+
+    lua_pushinteger(L, (lua_Integer)wavs_ok);
+    lua_pushboolean(L, music_ok ? 1 : 0);
+    lua_pushinteger(L, (lua_Integer)found);
+    lua_pushboolean(L, hot_ok ? 1 : 0);
+    return 4;
+}
+
 /* --- engine.economy --- */
 static int l_eco_queue_build(lua_State *L) {
     RtsLuaVm *vm = get_vm(L);
@@ -1067,6 +1106,7 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
     static const luaL_Reg audio_funcs[] = {
         {"play_3d", l_audio_play_3d},
         {"set_listener", l_audio_set_listener},
+        {"test_suite_and_mods", l_audio_test_suite_and_mods},
         {NULL, NULL}
     };
     static const luaL_Reg eco_funcs[] = {

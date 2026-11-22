@@ -24,6 +24,7 @@ void register_rts_toolkit_tests(void);
 void register_planet_physics_combat_tests(void);
 void register_skirmish_menus_tests(void);
 void register_webxr_mobile_tests(void);
+void register_audio_mods_tests(void);
 
 int main(void) {
     UNITY_BEGIN();
@@ -47,5 +48,6 @@ int main(void) {
     register_planet_physics_combat_tests();
     register_skirmish_menus_tests();
     register_webxr_mobile_tests();
+    register_audio_mods_tests();
     return UNITY_END();
 }

@@ -90,7 +90,7 @@ const sandbox = {
         }
         finished = true;
         clearTimeout(timer);
-        console.log('[wasm-smoke] PASS: 1prtsg.wasm booted cleanly, mounted', manifest.files.length, 'loose files, verified 6-DOF WebXR + pinch exports, and passed all 27 game scenarios!');
+        console.log('[wasm-smoke] PASS: 1prtsg.wasm booted cleanly, mounted', manifest.files.length, 'loose files, verified 6-DOF WebXR + pinch exports, and passed all 28 game scenarios!');
         process.exit(0);
       } catch (err) {
         finished = true;

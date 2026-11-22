@@ -224,4 +224,9 @@ local xr_ok, xr_snap, pinch_zoom, pinch_orbit = engine.input.test_6dof_pinch()
 expect(xr_ok and xr_snap > 0.4 and pinch_zoom > 0.5 and pinch_orbit > 0.5,
        "Scenario 27: 6-DOF WebXR pose / snap-turn or 2-finger pinch-rotate bridge failed")
 
-print("[Automated Game Tests] ALL 27 END-TO-END SCENARIOS PASSED!")
+-- Scenario 28: Full 27-Clip External CC BY 4.0 Audio Suite & In-Game Mod Manager Live Hot-Reload
+local wavs_ok, music_ok, mods_found, hot_ok = engine.audio.test_suite_and_mods()
+expect(wavs_ok == 27 and music_ok and mods_found >= 2 and hot_ok,
+       "Scenario 28: External 27-WAV audio suite or Mod Manager hot-reload failed")
+
+print("[Automated Game Tests] ALL 28 END-TO-END SCENARIOS PASSED!")

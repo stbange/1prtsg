@@ -115,18 +115,35 @@ Command your planetary and orbital war effort strictly from first-person through
 
 ---
 
-## Complete Feature Matrix (Phases 1–4 + Solaris Art Direction + 76 Unique Models + 1–420 Room Mega-Interiors + Tier 1/2/3 RTS Toolkit)
+## True 6-DOF WebXR VR, Mobile Pinch/Orbit Ergonomics, 27-Clip CC BY 4.0 Audio Suite & Live In-Game Mod Manager (`src/platform_webxr.c`, `src/audio.c`, `src/mod_manager.c`)
+
+- **True 6-DOF WebXR & Mobile Ergonomics:** `web/xr_bridge.js` runs an `xrSession.requestAnimationFrame` loop streaming real `XRViewerPose` left/right eye matrices, 3D left-hand Wrist-Pad pose, and right-hand Holo-Globe laser ray into WASM C (`_rts_webxr_submit_pose`) with VR Comfort Vignette, 30° Snap-Turn, and Seated Cockpit mode — while phones/tablets gain automatic touch joysticks and 2-finger pinch-zoom & drag-rotate Holo-Globe gestures.
+- **Full External CC BY 4.0 Audio Suite (27 Loose WAVs):** 24 retro-futurist SFX clips + 3 adaptive Solaris synth music stems (`music_solaris_orbit.wav`, `music_surface_command.wav`, `music_red_alert_battle.wav`) under `assets/audio/`, honoring interior hull low-pass muffling and orbital vacuum silence.
+- **Dynamic In-Game Mod Browser & Zero-Restart Hot-Reload:** Automatically discovers all `mods/*/mod.json` overlays (`Emerald Vanguard Overhaul` & `Solaris Gold Fleet Overhaul`), toggles VFS mounts in-game, and hot-reloads Lua scripts AND overridden 3D textures live without restarting!
+- **Desktop Release Bundles (`v1.0.0`):** Prebuilt zero-baked-assets archives for **Windows x64**, **macOS arm64**, and **Linux x64** published on **[GitHub Releases](https://github.com/stbange/1prtsg/releases)** via `.github/workflows/release.yml`.
+
+| True 6-DOF WebXR Stereo VR, 3D Wrist-Pad & Comfort Vignette | Adaptive Mobile Auto-Touch & 2-Finger Pinch Holo-Globe |
+| :---: | :---: |
+| ![WebXR 6-DOF Stereo VR](docs/screenshots/m013_01_webxr_6dof_wristpad_vignette.png) | ![Mobile Adaptive Pinch HUD](docs/screenshots/m013_02_mobile_adaptive_pinch_hud.png) |
+
+| Dynamic In-Game Mod Manager (2 Loose Mods + 27 External WAVs) | Zero-Restart Live Hot-Reload (`Solaris Gold Fleet Overhaul`) |
+| :---: | :---: |
+| ![Mod Manager Hot-Reload](docs/screenshots/m014_01_mod_manager_hotreload.png) | ![Solaris Gold Live Hot-Reload](docs/screenshots/m014_02_solaris_gold_live_hotreload.png) |
+
+---
+
+## Complete Feature Matrix (Milestones 001–014 · v1.0.0)
 
 - **Exclusively First-Person Commander & Hardcore Ironman (`src/world.c`, `src/controller.c`):** Zero god-camera. Walk seamlessly across interconnected rooms through open bulkhead doorways inside 1:1 multi-deck interiors, ride vertical **Turbolifts** across up to 20 decks, interact with physical War Room **3D Planetary & Orbital Holo-Globes**, Factory Terminals, Pilot Seats, and Bridge Helms, take direct manual piloting control of any construct (then hand back to AI crew), and survive Critical Reactor Meltdowns via physical **Escape Pod** evacuation.
 - **Full Interactive Tier 1/2/3 First-Person RTS Toolkit (`src/hologlobe_ui.c`, `src/field_gear.c`, `scripts/ui/diegetic_ui.lua`):** True 3D Holo-Globe raycast selection, box-selection, 7-mode surface/orbital orders & validated 3D base/station ghost placement; 4-Tab Diegetic Tactical Wrist-Pad (`Tab`); 1x/4x/12x Optical Binoculars & 3D Laser Strike Designator (`Z` + `LMB`); 7-Order Radial Quick Wheel (`V`/Right-Click); and Tier 2 Facility Build Consoles (`E` -> `1-6`) with live 1:1 progressive gantry welding assembly.
 - **Explorable 1–420 Room Mega-Interiors & Living 12-Role Crew (`src/interior_gen.c`, `src/crew_sim.c`):** Deterministic multi-deck floorplans for all **76 constructs** with 100% BFS-verified doorway connectivity, active-deck streaming, room-specific 3D props (Tokamak Reactor Cores, Shield Cores, Hangar Starfighters, Turbolift Shafts, Medbay Pods, Armory Lockers, illuminated corridor stripes), top-right **Diegetic Deck Blueprint Minimap**, and living 12-role staffed crew performing station work, corridor patrols, Engineer weld repairs, and Marine counter-boarding defense.
-- **True-Scale Spherical Planet & Real Orbital Mechanics (`src/planet.c`, `src/controller.c`):** 64-bit geocentric coordinates, 6-face cube-sphere terrain/oceans, local ENU surface frames, exponential atmosphere, aerobraking shielded re-entry heat flux, Velocity-Verlet orbital integration, Keplerian elements, Hohmann delta-v transfers, and automated Astrogator ascent/rendezvous/docking/re-entry.
+- **True-Scale Spherical Planet & Real Orbital Mechanics (`src/planet.c`, `src/planet_mesh.c`, `src/vehicle_physics.c`):** 64-bit geocentric coordinates, multi-LOD cube-sphere terrain & animated wave oceans, local ENU surface frames, exponential atmosphere, aerobraking shielded re-entry heat flux, Velocity-Verlet orbital integration, Keplerian elements, Hohmann delta-v transfers, Dropship cargo bay clamping (`K`), safe `1x/2x/4x/8x` time compression (`.`), and automated Astrogator ascent/rendezvous/docking/re-entry.
 - **Doubled External Roster (`docs/ROSTER.md`, `scripts/units/`, `scripts/interiors/catalog.lua`, `scripts/crew/`):** **76 distinct enterable constructs** (24 Buildings · 10 Ground Vehicles · 10 Naval Ships · 8 Aircraft · 14 Spacecraft · 10 Space Stations), each with its own dedicated sculpted `.obj` model (`assets/models/<id>.obj`) and tailored multi-deck enterable interior + **12 crew/personnel roles** registered entirely from external MIT Lua 5.4 scripts.
-- **Multi-Theater Economy, Spherical Horizon Sensors & Comms Relays (`src/economy.c`):** Ore/Fuel/Power/Manpower ledgers, 1:1 timed production queues, true planetary curvature horizon occlusion for Fog-of-War sensors (Orbital Recon Satellites), and multi-hop Comms Relay BFS networks (destroying a GEO Relay severs remote surface command links).
-- **3D Spatial Audio & Orbital Acoustics (`src/audio.c`, `src/audio_sdl3.c`):** External WAV PCM decoder, 3D attenuation/panning, armored interior hull low-pass muffling, and orbital vacuum silence for airborne sounds while preserving hull-conducted vibration and radio comms.
+- **Multi-Theater Economy, Strategic AI, Physical Logistics & 4 Scenarios (`src/economy.c`, `scripts/ai/strategic_ai.lua`, `scripts/rules/logistics.lua`, `scripts/missions/scenarios.lua`):** Ore/Fuel/Power/Manpower ledgers, 1:1 timed production queues, true planetary curvature horizon occlusion for Fog-of-War sensors, severable multi-hop GEO Comms Relays, physical raidable Ore Trucks / Naval Tenders / Orbital Lifters, and 4 curated first-person scenarios.
+- **Full External CC BY 4.0 Audio Suite & Orbital Acoustics (`src/audio.c`, `src/audio_sdl3.c`, `assets/audio/`):** 24 external PCM WAV SFX + 3 adaptive Solaris synth music stems, 3D attenuation/panning, armored interior hull low-pass muffling, and orbital vacuum silence for airborne sounds while preserving hull-conducted vibration and radio comms.
 - **Multi-Deck Capital Ship Boarding & Reactor Meltdowns (`src/boarding.c`):** Deck-by-deck marine assaults (`Hangar/Airlock` -> `Engineering` -> `Bridge/CIC`), hull decompression vacuum hazards requiring `mag_boots`, intact enemy flagship capture (flipping `faction_id`), and timed Critical Reactor Meltdown countdowns.
-- **Solaris Retro-Futurism 3D Graphics, Pointer Lock WebGL 2, Auto-Touch Mobile Web & True Stereoscopic WebXR (`src/retro_renderer.c`, `src/gfx_gl.c`, `src/input.c`, `web/`):** Unified OpenGL 3.3 Core / OpenGL ES 3.0 / WebGL 2.0 renderer featuring sculpted multi-material vertex-colored `.obj` meshes, brushed satin titanium/obsidian/emerald-jade palettes, procedural twilight-ring & cosmic nebula sky domes (`sky.vert`/`sky.frag`), Fresnel rim-lit metallic shading with glowing emissive thrusters/canopies/light rails, vaulted interior arches, analytic hexagonal energy shields, hybrid 3D/8-dir sprite crew LOD (forced 3D inside interiors & VR), optional face-culled chunked voxels (`src/voxel.c`), browser Pointer Lock 360° mouse look + WebAudio unlock, automatic Mobile Web Touch controls, and side-by-side dual-viewport **WebXR 6-DOF Stereo VR** with laser aim-rays.
-- **Zero Baked Assets, External Config, Live Hot-Reload & Deterministic Save/Load (`src/vfs.c`, `src/config.c`, `src/save_load.c`):** Every asset, script, config (`config/engine.cfg`), and mod (`mods/example_mod/`) sits loose beside the binary (fetched via `manifest.json` on Web), with runtime mtime hot-reload watching and deterministic `RTS_SAVE_V1` world snapshot serialization.
+- **Solaris Retro-Futurism 3D Graphics, Pointer Lock WebGL 2, Auto-Touch Mobile Web & True 6-DOF WebXR (`src/retro_renderer.c`, `src/gfx_gl.c`, `src/input.c`, `src/platform_webxr.c`, `web/`):** Unified OpenGL 3.3 Core / OpenGL ES 3.0 / WebGL 2.0 renderer, Fresnel rim-lit shading, analytic hex shields, browser Pointer Lock 360° mouse look + WebAudio unlock, automatic Mobile Web Touch controls + 2-finger pinch/orbit, and true 6-DOF **WebXR Stereo VR** with eye matrices, 3D left-hand Wrist-Pad, laser aim-ray, comfort vignette, and 30° snap-turn.
+- **Zero Baked Assets, In-Game Mod Browser, Live Hot-Reload & 5-Slot Persistent Saves (`src/vfs.c`, `src/mod_manager.c`, `src/ui_menus.c`, `src/save_load.c`):** Every asset, script, config (`config/engine.cfg`), and mod (`mods/example_mod/`, `mods/solaris_gold_fleet/`) sits loose beside the binary (fetched via `manifest.json` on Web), with zero-restart in-game mod toggling & hot-reload and 5-slot `RTS_SAVE_V1` persistence on both Desktop disk and Web `localStorage`.
 
 ---
 
@@ -143,7 +160,7 @@ Command your planetary and orbital war effort strictly from first-person through
 cmake --preset linux-coverage
 cmake --build --preset linux-coverage -j$(nproc)
 
-# Run C Unity unit tests, Lua unit tests (>= 95% Lua coverage), and 22 headless automated game tests
+# Run C Unity unit tests, Lua unit tests (>= 95% Lua coverage), and 28 headless automated game tests
 find build/linux-coverage -name '*.gcda' -delete
 ctest --preset linux-coverage --output-on-failure
 

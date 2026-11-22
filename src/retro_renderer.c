@@ -221,6 +221,20 @@ void rts_renderer_shutdown(RtsRetroRenderer *rr) {
     rr->initialized = false;
 }
 
+bool rts_renderer_reload_textures(RtsRetroRenderer *rr) {
+    if (!rr || !rr->initialized || !rr->vfs) return false;
+    RtsGfxHandle h;
+    if ((h = load_png_tex_ex(rr, "textures/hull_blue.png",      false)) != RTS_GFX_INVALID) rr->tex_hull_blue = h;
+    if ((h = load_png_tex_ex(rr, "textures/hull_red.png",       false)) != RTS_GFX_INVALID) rr->tex_hull_red = h;
+    if ((h = load_png_tex_ex(rr, "textures/deck_floor.png",     false)) != RTS_GFX_INVALID) rr->tex_deck_floor = h;
+    if ((h = load_png_tex_ex(rr, "textures/planet_surface.png", false)) != RTS_GFX_INVALID) rr->tex_planet_surface = h;
+    if ((h = load_png_tex_ex(rr, "textures/ocean_wave.png",     false)) != RTS_GFX_INVALID) rr->tex_ocean = h;
+    if ((h = load_png_tex_ex(rr, "textures/crt_console.png",    false)) != RTS_GFX_INVALID) rr->tex_crt_console = h;
+    if ((h = load_png_tex_ex(rr, "sprites/crew_8dir.png",       true))  != RTS_GFX_INVALID) rr->tex_crew_sprite = h;
+    if ((h = load_png_tex_ex(rr, "fonts/retro_font.png",        true))  != RTS_GFX_INVALID) rr->tex_font_atlas = h;
+    return true;
+}
+
 const RtsMeshCacheEntry *rts_renderer_get_mesh_entry(RtsRetroRenderer *rr, const char *rel_path) {
     if (!rr || !rr->initialized || !rel_path || rel_path[0] == '\0') {
         return NULL;

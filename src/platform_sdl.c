@@ -220,6 +220,7 @@ static bool init_engine_stack(InteractiveApp *app, const RtsAppConfig *cfg) {
     rts_vehicle_physics_init(&app->vphys);
     rts_menu_init(&app->menu);
     rts_menu_refresh_slots(&app->menu, ".");
+    rts_menu_sync_mods(&app->menu, &app->vfs);
     RtsFeelConfig feel = cfg->fun_baseline ? rts_feel_config_baseline() : rts_feel_config_solaris();
     rts_tactical_init(&app->tactical, &feel, seed, &app->audio);
 
@@ -452,7 +453,19 @@ static void handle_menu_action(InteractiveApp *app, RtsMenuAction act) {
             rts_renderer_set_live_status(&app->renderer, "CAMPAIGN RESTORED", "", app->menu.status_note);
         }
     } else if (act == RTS_MENU_ACT_TOGGLE_MOD) {
-        if (strcmp(app->menu.active_mod_id, "example_mod") == 0) {
+        if (app->menu.mod_catalog.count > 0u) {
+            size_t midx = (size_t)(app->menu.selected_mod_idx >= 0 ? app->menu.selected_mod_idx : 0);
+            if (rts_mod_manager_toggle(&app->menu.mod_catalog, &app->vfs, midx)) {
+                const RtsModCatalogEntry *me = &app->menu.mod_catalog.entries[midx];
+                snprintf(app->menu.active_mod_id, sizeof(app->menu.active_mod_id), "%s", me->enabled ? me->id : "none");
+                snprintf(app->menu.status_note, sizeof(app->menu.status_note),
+                         "MOD %s: %s (PRESS APPLY TO HOT-RELOAD)",
+                         me->enabled ? "ENABLED" : "DISABLED", me->name);
+                rts_audio_play_event(&app->audio, &app->world.planet, "ui_click",
+                                     app->world.commander.local_pos, RTS_AUD_RADIO_COMMS);
+            }
+        } else if (strcmp(app->menu.active_mod_id, "example_mod") == 0) {
+            rts_vfs_unmount_mod(&app->vfs, "example_mod");
             snprintf(app->menu.active_mod_id, sizeof(app->menu.active_mod_id), "none");
             snprintf(app->menu.status_note, sizeof(app->menu.status_note), "MOD UNMOUNTED (BASE SOLARIS ROSTER)");
         } else if (rts_vfs_mount_mod(&app->vfs, "example_mod")) {
@@ -460,8 +473,12 @@ static void handle_menu_action(InteractiveApp *app, RtsMenuAction act) {
             snprintf(app->menu.status_note, sizeof(app->menu.status_note), "MOUNTED EXTERNAL MOD: EXAMPLE_MOD (EMERALD VANGUARD)");
         }
     } else if (act == RTS_MENU_ACT_HOT_RELOAD) {
-        rts_lua_exec_vfs_script(&app->lua, "main.lua");
-        snprintf(app->menu.status_note, sizeof(app->menu.status_note), "LIVE VFS HOT-RELOAD EXECUTED CLEANLY!");
+        if (rts_mod_manager_hot_reload(&app->vfs, &app->lua, &app->renderer)) {
+            rts_audio_play_event(&app->audio, &app->world.planet, "comms_bleep",
+                                 app->world.commander.local_pos, RTS_AUD_RADIO_COMMS);
+            snprintf(app->menu.status_note, sizeof(app->menu.status_note),
+                     "LIVE HOT-RELOAD COMPLETE: LUA + OVERRIDDEN HULL TEXTURES UPDATED!");
+        }
     } else if (act == RTS_MENU_ACT_QUIT) {
         app->running = false;
     }
@@ -798,6 +815,15 @@ static void interactive_tick(void *arg) {
     }
 
     app->time_s += 1.0f / 60.0f;
+    {
+        RtsMusicState mstate = RTS_MUSIC_SOLARIS_ORBIT;
+        if (app->menu.screen == RTS_MENU_NONE) {
+            bool red_alert = app->crew.red_alert || (app->view_mode == RTS_VIEW_TACTICAL) ||
+                             rts_combat_is_active(&app->combat, &app->world);
+            mstate = red_alert ? RTS_MUSIC_RED_ALERT_BATTLE : RTS_MUSIC_SURFACE_COMMAND;
+        }
+        rts_audio_update_music(&app->audio, mstate, 1.0 / 60.0);
+    }
     if (app->menu.screen != RTS_MENU_NONE) {
         rts_renderer_render_menu_screen(&app->renderer, &app->world, &app->menu, app->time_s);
         SDL_GL_SwapWindow(app->window);
@@ -1593,6 +1619,69 @@ int rts_platform_capture_milestone_013(const RtsAppConfig *cfg) {
            st.draw_calls, st.screenshots_saved, st.gl_errors);
     if (st.gl_errors != 0u) {
         fprintf(stderr, "[milestone_013] FAIL: OpenGL reported %u errors\n", st.gl_errors);
+        rc = 1;
+    }
+
+    shutdown_engine_stack(app);
+    free(app);
+    return rc;
+}
+
+int rts_platform_capture_milestone_014(const RtsAppConfig *cfg) {
+    InteractiveApp *app = (InteractiveApp *)calloc(1, sizeof(InteractiveApp));
+    if (!app) return 1;
+
+    if (!init_sdl_gl(&app->window, &app->gl_ctx, cfg->width, cfg->height, false)) {
+        free(app);
+        return 1;
+    }
+    if (!init_engine_stack(app, cfg)) {
+        shutdown_engine_stack(app);
+        free(app);
+        return 1;
+    }
+
+    int rc = 0;
+
+    /* Shot 1: Solaris In-Game Mod Manager displaying discovered loose mods + hot-reload */
+    rts_menu_sync_mods(&app->menu, &app->vfs);
+    if (app->menu.mod_catalog.count >= 2u) {
+        rts_mod_manager_toggle(&app->menu.mod_catalog, &app->vfs, 0u); /* Enable Emerald Vanguard */
+    }
+    app->menu.screen = RTS_MENU_MODS;
+    app->menu.selected_row = (int)app->menu.mod_catalog.count; /* Highlight APPLY & LIVE HOT-RELOAD */
+    snprintf(app->menu.status_note, sizeof(app->menu.status_note),
+             "27 EXTERNAL CC BY 4.0 WAVS LOADED | %zu LOOSE MODS DISCOVERED | ZERO-RESTART HOT-RELOAD",
+             app->menu.mod_catalog.count);
+    if (!save_menu_shot(app, cfg->milestone_014_dir, "m014_01_mod_manager_hotreload.png", 2.1f)) rc = 1;
+
+    /* Shot 2: Toggle Solaris Gold Fleet ON and execute ZERO-RESTART live hot-reload (Lua + hull textures!) */
+    if (app->menu.mod_catalog.count >= 2u) {
+        rts_mod_manager_toggle(&app->menu.mod_catalog, &app->vfs, 0u); /* Disable Emerald */
+        rts_mod_manager_toggle(&app->menu.mod_catalog, &app->vfs, 1u); /* Enable Solaris Gold Fleet */
+        rts_mod_manager_hot_reload(&app->vfs, &app->lua, &app->renderer);
+    }
+    app->menu.screen = RTS_MENU_NONE;
+    rts_renderer_render_scene(&app->renderer, &app->world, &app->input, RTS_SCENE_WAR_ROOM_HOLOGLOBE, 3.4f);
+    SDL_GL_SwapWindow(app->window);
+    rts_renderer_render_scene(&app->renderer, &app->world, &app->input, RTS_SCENE_WAR_ROOM_HOLOGLOBE, 3.4f);
+    {
+        char out_path[512];
+        snprintf(out_path, sizeof(out_path), "%s/m014_02_solaris_gold_live_hotreload.png", cfg->milestone_014_dir);
+        if (!rts_renderer_capture_png(&app->renderer, out_path)) {
+            fprintf(stderr, "[milestone_014] Failed to write %s\n", out_path);
+            rc = 1;
+        } else {
+            printf("[milestone_014] Saved %s\n", out_path);
+        }
+        SDL_GL_SwapWindow(app->window);
+    }
+
+    RtsGfxStats st = app->renderer.gfx.get_stats(app->renderer.gfx.state);
+    printf("[milestone_014] OpenGL draw calls: %u, screenshots: %u, gl_errors: %u\n",
+           st.draw_calls, st.screenshots_saved, st.gl_errors);
+    if (st.gl_errors != 0u) {
+        fprintf(stderr, "[milestone_014] FAIL: OpenGL reported %u errors\n", st.gl_errors);
         rc = 1;
     }
 

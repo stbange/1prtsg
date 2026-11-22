@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: MIT
+name: 1stPRTS Desktop Release Packaging (Windows / macOS / Linux)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Package Linux x64 (Loose External Assets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libgl1-mesa-dev libgles2-mesa-dev libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libwayland-dev libxkbcommon-dev python3
+      - name: Configure & Build Release
+        run: |
+          cmake -B build/rel -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build/rel -j$(nproc)
+      - name: Stage Loose-Asset Release Folder & Smoke Test
+        run: |
+          python3 tools/generate_manifest.py
+          mkdir -p dist/1prtsg
+          cp build/rel/1prtsg dist/1prtsg/
+          cp -r assets scripts config mods dist/1prtsg/
+          cp manifest.json README.md LICENSE-CODE LICENSE-ASSETS THIRD_PARTY_NOTICES.md dist/1prtsg/
+          (cd dist/1prtsg && ./1prtsg --headless --data-dir . --test-script tests/game/run_all.lua)
+          tar -C dist -czf 1prtsg-linux-x64.tar.gz 1prtsg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 1prtsg-linux-x64
+          path: 1prtsg-linux-x64.tar.gz
+
+  build-macos:
+    name: Package macOS arm64 (Loose External Assets)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure & Build Release
+        run: |
+          cmake -B build/rel -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build/rel -j$(sysctl -n hw.ncpu)
+      - name: Stage Loose-Asset Release Folder & Smoke Test
+        run: |
+          python3 tools/generate_manifest.py
+          mkdir -p dist/1prtsg
+          cp build/rel/1prtsg dist/1prtsg/
+          cp -r assets scripts config mods dist/1prtsg/
+          cp manifest.json README.md LICENSE-CODE LICENSE-ASSETS THIRD_PARTY_NOTICES.md dist/1prtsg/
+          (cd dist/1prtsg && ./1prtsg --headless --data-dir . --test-script tests/game/run_all.lua)
+          tar -C dist -czf 1prtsg-macos-arm64.tar.gz 1prtsg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 1prtsg-macos-arm64
+          path: 1prtsg-macos-arm64.tar.gz
+
+  build-windows:
+    name: Package Windows x64 (Loose External Assets)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure & Build Release
+        run: |
+          cmake -B build/rel -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
+          cmake --build build/rel --config Release --parallel
+      - name: Stage Loose-Asset Release Folder & Smoke Test
+        shell: pwsh
+        run: |
+          python tools/generate_manifest.py
+          New-Item -ItemType Directory -Force -Path dist/1prtsg | Out-Null
+          Copy-Item build/rel/Release/1prtsg.exe dist/1prtsg/
+          Copy-Item -Recurse assets, scripts, config, mods dist/1prtsg/
+          Copy-Item manifest.json, README.md, LICENSE-CODE, LICENSE-ASSETS, THIRD_PARTY_NOTICES.md dist/1prtsg/
+          Push-Location dist/1prtsg
+          ./1prtsg.exe --headless --data-dir . --test-script tests/game/run_all.lua
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+          Compress-Archive -Path dist/1prtsg -DestinationPath 1prtsg-windows-x64.zip -Force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 1prtsg-windows-x64
+          path: 1prtsg-windows-x64.zip
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-linux, build-macos, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+      - name: Create or Update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          ls -lh release-artifacts/
+          cat << 'EOF' > /tmp/release_notes.md
+          # 1stPRTS — First-Person Planetary-to-Orbital RTS (${TAG_NAME})
+
+          Full **Zero-Baked-Assets** release of **1stPRTS** across Windows x64, macOS arm64, Linux x64, and WebGL 2 / Mobile Touch / WebXR!
+
+          ## Highlights (Milestones 001–014)
+          - **Planetary-to-Orbital Command:** Seamless 64-bit spherical worlds, ocean shaders, 6 vehicle classes (Ground, Naval/Submarine, VTOL Dropships with live cargo clamping `[K]`, 6-DOF Spacecraft with orbital burns & re-entry plasma), and safe `1x/2x/4x/8x` time compression `[.]`.
+          - **76 Unique Enterable Constructs & Living Crew:** Every building, vehicle, ship, spacecraft, and station features a bespoke `.obj` model and 1 to 420 enterable interior rooms staffed by 12 specialized crew roles.
+          - **Tier 1/2/3 Interactive RTS Command:** 3D Holo-Globe picking/orders/building placement, 4-tab Wrist-Pad, Optics/Laser Designator (`[O]`/`[L]`), 7-Order Radial Wheel (`[R]`), and live 1:1 gantry assembly.
+          - **Unified Live Combat, Strategic AI & 4 Scenarios:** EMP-Prime x2.4 synergy, 6 weapon families, compartment hitboxes, voxel crater carving, severable GEO comms relays, physical raidable logistics convoys, Hardcore Ironman default, 5-slot persistent saves, and 4 curated scenarios.
+          - **True 6-DOF WebXR & Mobile Ergonomics:** Real `XRViewerPose` eye matrices, 3D left-hand Wrist-Pad, right-hand Holo-Globe aim ray, VR comfort vignette + 30° snap-turn, and 2-finger pinch-zoom/rotate.
+          - **Full External CC BY 4.0 Audio Suite & In-Game Mod Manager:** 24 WAV SFX + 3 adaptive Solaris synth music stems, plus dynamic in-game Mod Browser (`Emerald Vanguard Overhaul` & `Solaris Gold Fleet Overhaul`) with zero-restart Lua & texture hot-reload.
+
+          ## Zero-Baked-Assets Desktop Bundles
+          Unzip the archive for your OS and launch `1prtsg` / `1prtsg.exe` directly from the extracted folder. All `assets/`, `scripts/`, `config/`, and `mods/` files remain loose and directly editable!
+          EOF
+          sed -i "s/\${TAG_NAME}/${TAG_NAME}/g" /tmp/release_notes.md
+          if gh release view "${TAG_NAME}" >/dev/null 2>&1; then
+            gh release upload "${TAG_NAME}" release-artifacts/* --clobber
+            gh release edit "${TAG_NAME}" --notes-file /tmp/release_notes.md
+          else
+            gh release create "${TAG_NAME}" release-artifacts/* \
+              --title "1stPRTS ${TAG_NAME} — Planetary-to-Orbital First-Person RTS" \
+              --notes-file /tmp/release_notes.md
+          fi

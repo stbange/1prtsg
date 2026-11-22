@@ -187,6 +187,7 @@ typedef struct RtsRetroRenderer {
 
 bool rts_renderer_init(RtsRetroRenderer *rr, RtsGfxBackend gfx, const RtsVfs *vfs, int width, int height);
 void rts_renderer_shutdown(RtsRetroRenderer *rr);
+bool rts_renderer_reload_textures(RtsRetroRenderer *rr);
 RtsGfxHandle rts_renderer_get_mesh(RtsRetroRenderer *rr, const char *rel_path);
 const RtsMeshCacheEntry *rts_renderer_get_mesh_entry(RtsRetroRenderer *rr, const char *rel_path);
 void rts_renderer_set_live_status(RtsRetroRenderer *rr, const char *mode_tag, const char *prompt, const char *toast);
