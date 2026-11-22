@@ -23,6 +23,7 @@ void register_mega_interiors_and_crew_tests(void);
 void register_rts_toolkit_tests(void);
 void register_planet_physics_combat_tests(void);
 void register_skirmish_menus_tests(void);
+void register_webxr_mobile_tests(void);
 
 int main(void) {
     UNITY_BEGIN();
@@ -45,5 +46,6 @@ int main(void) {
     register_rts_toolkit_tests();
     register_planet_physics_combat_tests();
     register_skirmish_menus_tests();
+    register_webxr_mobile_tests();
     return UNITY_END();
 }

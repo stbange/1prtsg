@@ -45,16 +45,22 @@ typedef struct RtsXrEyeView {
 
 typedef struct RtsXrFrameState {
     bool session_active;
+    bool has_eye_matrices;
     int eye_count;
     RtsXrEyeView eyes[2];
     RtsVec3d head_pos;
     RtsQuatd head_rot;
+    RtsVec3d left_hand_pos;
+    RtsQuatd left_hand_rot;
     RtsRay right_aim_ray;
     bool right_trigger_down;
     bool right_trigger_pressed;
     float left_stick_x;
     float left_stick_y;
     float right_stick_x;
+    float snap_turn_deg;
+    bool comfort_vignette;
+    bool seated_cockpit_mode;
 } RtsXrFrameState;
 
 typedef struct RtsInputIntent {
@@ -72,6 +78,8 @@ typedef struct RtsInputIntent {
     bool holo_select_pressed;
     bool holo_order_pressed;
     float holo_zoom_delta;
+    float holo_orbit_dx;
+    float holo_orbit_dy;
     RtsRay aim_ray;
     bool has_aim_ray;
 } RtsInputIntent;
@@ -95,6 +103,8 @@ typedef struct RtsInputRouter {
 
     bool pinch_active;
     float pinch_last_dist;
+    float pinch_last_angle;
+    bool xr_snap_latched;
 
     RtsXrFrameState xr;
     RtsInputIntent intent;
@@ -106,10 +116,12 @@ void rts_input_begin_frame(RtsInputRouter *r);
 void rts_input_set_mode_override(RtsInputRouter *r, bool locked, RtsInputMode mode);
 void rts_input_notify_kbm_activity(RtsInputRouter *r);
 void rts_input_notify_gamepad_activity(RtsInputRouter *r);
+
 void rts_input_on_touch_down(RtsInputRouter *r, int64_t finger_id, float nx, float ny);
 void rts_input_on_touch_move(RtsInputRouter *r, int64_t finger_id, float nx, float ny);
 void rts_input_on_touch_up(RtsInputRouter *r, int64_t finger_id);
 void rts_input_on_pinch(RtsInputRouter *r, float dist_norm, bool active);
+void rts_input_on_pinch_rotate(RtsInputRouter *r, float dist_norm, float angle_rad, bool active);
 void rts_input_update_xr(RtsInputRouter *r, const RtsXrFrameState *xr);
 
 #endif /* RTS_INPUT_H */

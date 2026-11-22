@@ -1029,7 +1029,15 @@ void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *worl
 
     RtsVec3f base_head = (xr && xr->session_active) ? rts_v3d_to_f(xr->head_pos) : (RtsVec3f){0.0f, 2.30f, 5.8f};
     RtsVec3f hand_pos = (xr && xr->session_active) ? rts_v3d_to_f(xr->right_aim_ray.origin) : (RtsVec3f){0.72f, 1.55f, 3.9f};
+    RtsVec3f lhand_pos = (xr && xr->session_active && rts_v3d_len_sq(xr->left_hand_pos) > 1e-4)
+                       ? rts_v3d_to_f(xr->left_hand_pos) : (RtsVec3f){-0.85f, 1.48f, 4.10f};
     RtsVec3f hit_pt = {0.0f, 2.25f, 0.45f};
+    if (xr && xr->session_active && rts_v3d_len_sq(xr->right_aim_ray.dir) > 0.5) {
+        double t_hit = 0.0;
+        if (rts_ray_intersect_sphere(xr->right_aim_ray, rts_v3d(0.0, 2.25, -0.6), 1.32, &t_hit)) {
+            hit_pt = rts_v3d_to_f(rts_v3d_add(xr->right_aim_ray.origin, rts_v3d_scale(xr->right_aim_ray.dir, t_hit)));
+        }
+    }
     const float ipd_half = 0.24f;
 
     for (int eye = 0; eye < 2; ++eye) {
@@ -1041,7 +1049,9 @@ void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *worl
         rr->cur_cam_pos = cam;
         rr->cur_fog_color = (RtsVec4f){0.06f, 0.16f, 0.28f, 0.20f};
         RtsVec3f target = {side * 0.04f, 1.85f, -0.8f};
-        RtsMat4f vp = rts_mat4_mul(eye_proj, rts_mat4_look_at(cam, target, (RtsVec3f){0.0f, 1.0f, 0.0f}));
+        RtsMat4f vp = (xr && xr->has_eye_matrices)
+                    ? rts_mat4_mul(xr->eyes[eye].proj, xr->eyes[eye].view)
+                    : rts_mat4_mul(eye_proj, rts_mat4_look_at(cam, target, (RtsVec3f){0.0f, 1.0f, 0.0f}));
 
         draw_sky_dome(rr, vp, cam, sun, 1.0f, time_s);
         draw_box(rr, vp, (RtsVec3f){0.0f, -0.25f, 0.0f}, (RtsVec3f){20.0f, 0.5f, 20.0f}, idq, rr->tex_deck_floor, (RtsVec4f){0.92f, 0.96f, 1.0f, 1.0f}, light, time_s);
@@ -1087,8 +1097,8 @@ void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *worl
                   rts_mat4_from_quat_trs(spin, hit_pt, (RtsVec3f){0.11f, 0.11f, 0.11f}),
                   (RtsVec4f){1.0f, 0.86f, 0.28f, 1.0f}, light, time_s, false, true, false, false, RTS_DRAW_TRIANGLES);
 
-        /* Floating 3D Left-Hand Holo-Radar Wrist-Pad in VR Space */
-        draw_box(rr, vp, (RtsVec3f){-0.85f, 1.48f, 4.10f}, (RtsVec3f){0.58f, 0.38f, 0.03f},
+        /* Physical 6-DOF Left-Hand Diegetic Tactical Wrist-Pad Tracked to XR Controller */
+        draw_box(rr, vp, lhand_pos, (RtsVec3f){0.62f, 0.40f, 0.03f},
                  rts_quat_from_axis_angle(rts_v3d(0,1,0), 0.45), rr->tex_crt_console, (RtsVec4f){0.55f, 1.0f, 0.92f, 1.0f}, light, time_s);
     }
 
@@ -1097,16 +1107,27 @@ void rts_renderer_render_webxr_stereo(RtsRetroRenderer *rr, const RtsWorld *worl
     }
     float w = (float)rr->width, h = (float)rr->height;
     RtsMat4f ortho = rts_mat4_ortho(0.0f, w, h, 0.0f, -1.0f, 1.0f);
+
+    /* VR Comfort Vignette peripheral framing per eye when enabled */
+    if (xr && xr->comfort_vignette) {
+        RtsVec4f vig = {0.0f, 0.01f, 0.03f, 0.56f};
+        hud_quad(rr, ortho, 0.0f, 64.0f, 28.0f, h - 116.0f, vig);
+        hud_quad(rr, ortho, w * 0.5f - 28.0f, 64.0f, 56.0f, h - 116.0f, vig);
+        hud_quad(rr, ortho, w - 28.0f, 64.0f, 28.0f, h - 116.0f, vig);
+    }
+
     hud_quad(rr, ortho, w * 0.5f - 1.5f, 64.0f, 3.0f, h - 116.0f, (RtsVec4f){0.22f, 0.92f, 1.0f, 0.88f});
-    hud_border_box(rr, ortho, 16.0f, 78.0f, 246.0f, 26.0f, (RtsVec4f){0.03f, 0.08f, 0.16f, 0.82f}, (RtsVec4f){0.25f, 0.96f, 0.84f, 0.92f});
-    hud_text(rr, ortho, 26.0f, 86.0f, 1.12f, (RtsVec4f){0.42f, 1.0f, 0.88f, 1.0f}, "LEFT EYE [WEBXR 6-DOF]");
-    hud_border_box(rr, ortho, w * 0.5f + 16.0f, 78.0f, 258.0f, 26.0f, (RtsVec4f){0.03f, 0.08f, 0.16f, 0.82f}, (RtsVec4f){0.25f, 0.96f, 0.84f, 0.92f});
-    hud_text(rr, ortho, w * 0.5f + 26.0f, 86.0f, 1.12f, (RtsVec4f){0.42f, 1.0f, 0.88f, 1.0f}, "RIGHT EYE [IPD 64MM]");
+    hud_border_box(rr, ortho, 16.0f, 78.0f, 290.0f, 26.0f, (RtsVec4f){0.03f, 0.08f, 0.16f, 0.84f}, (RtsVec4f){0.25f, 0.96f, 0.84f, 0.92f});
+    hud_text(rr, ortho, 26.0f, 86.0f, 1.05f, (RtsVec4f){0.42f, 1.0f, 0.88f, 1.0f},
+             (xr && xr->has_eye_matrices) ? "LEFT EYE [6-DOF XRPOSE LIVE]" : "LEFT EYE [WEBXR 6-DOF]");
+    hud_border_box(rr, ortho, w * 0.5f + 16.0f, 78.0f, 305.0f, 26.0f, (RtsVec4f){0.03f, 0.08f, 0.16f, 0.84f}, (RtsVec4f){0.25f, 0.96f, 0.84f, 0.92f});
+    hud_text(rr, ortho, w * 0.5f + 26.0f, 86.0f, 1.05f, (RtsVec4f){0.42f, 1.0f, 0.88f, 1.0f},
+             (xr && xr->comfort_vignette) ? "RIGHT EYE [VIGNETTE + SNAP 30]" : "RIGHT EYE [IPD 64MM]");
 
     render_hud_common(rr, world, input,
-                      "WEBXR STEREOSCOPIC VR - SOLARIS WAR ROOM",
-                      "DUAL-EYE STEREO | 3D CREW LOD FORCED | LASER AIM-RAY HIT",
-                      "WEBXR SESSION ACTIVE: AIM-RAY LOCKED ON HELIOS PRIME 400KM ORBITAL FLEET!",
+                      "WEBXR 6-DOF STEREOSCOPIC VR - SOLARIS WAR ROOM",
+                      "TRUE XRVIEWERPOSE MATRICES | LEFT-HAND 3D WRIST-PAD | RIGHT LASER SELECTOR",
+                      "6-DOF WEBXR LIVE: EYE MATRICES STREAMING + 3D WRIST-PAD + HOLO-GLOBE AIM RAY!",
                       false);
     rr->gfx.end_frame(rr->gfx.state);
 }

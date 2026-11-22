@@ -777,6 +777,20 @@ static void interactive_tick(void *arg) {
         }
     }
 
+    float pdist = 0.0f, pang = 0.0f;
+    bool pact = false;
+    if (rts_web_consume_pinch(&pdist, &pang, &pact)) {
+        rts_input_on_pinch_rotate(&app->input, pdist, pang, pact);
+    }
+    if (app->view_mode == RTS_VIEW_SANDBOX_RTS && app->world.commander.at_holo_globe) {
+        if (fabsf(app->input.intent.holo_zoom_delta) > 1e-4f) {
+            rts_hologlobe_zoom(&app->holo, (double)app->input.intent.holo_zoom_delta);
+        }
+        if (fabsf(app->input.intent.holo_orbit_dx) > 1e-4f) {
+            rts_hologlobe_orbit_drag(&app->holo, (double)app->input.intent.holo_orbit_dx, 0.0);
+        }
+    }
+
     RtsXrFrameState xr;
     bool xr_on = rts_webxr_get_latest_state(&xr) && xr.session_active;
     if (xr_on) {
@@ -1477,6 +1491,108 @@ int rts_platform_capture_milestone_012(const RtsAppConfig *cfg) {
            st.draw_calls, st.screenshots_saved, st.gl_errors);
     if (st.gl_errors != 0u) {
         fprintf(stderr, "[milestone_012] FAIL: OpenGL reported %u errors\n", st.gl_errors);
+        rc = 1;
+    }
+
+    shutdown_engine_stack(app);
+    free(app);
+    return rc;
+}
+
+int rts_platform_capture_milestone_013(const RtsAppConfig *cfg) {
+    InteractiveApp *app = (InteractiveApp *)calloc(1, sizeof(InteractiveApp));
+    if (!app) return 1;
+
+    if (!init_sdl_gl(&app->window, &app->gl_ctx, cfg->width, cfg->height, false)) {
+        free(app);
+        return 1;
+    }
+    if (!init_engine_stack(app, cfg)) {
+        shutdown_engine_stack(app);
+        free(app);
+        return 1;
+    }
+
+    int rc = 0;
+
+    /* Shot 1: True 6-DOF WebXR Stereo View with Eye Matrices, Tracked 3D Left-Hand Wrist-Pad,
+     * Right-Hand Holo-Globe Aim Ray, and Active VR Comfort Vignette */
+    {
+        float aspect = (float)(cfg->width / 2) / (float)(cfg->height > 0 ? cfg->height : 1);
+        RtsMat4f proj = rts_mat4_perspective((float)(64.0 * RTS_DEG2RAD), aspect, 0.1f, 1200.0f);
+        RtsMat4f lview = rts_mat4_look_at((RtsVec3f){-0.032f, 2.55f, 5.8f},
+                                          (RtsVec3f){0.0f, 1.95f, -0.4f},
+                                          (RtsVec3f){0.0f, 1.0f, 0.0f});
+        RtsMat4f rview = rts_mat4_look_at((RtsVec3f){ 0.032f, 2.55f, 5.8f},
+                                          (RtsVec3f){0.0f, 1.95f, -0.4f},
+                                          (RtsVec3f){0.0f, 1.0f, 0.0f});
+        rts_webxr_on_session_state(1);
+        rts_webxr_submit_pose(0.0f, 2.00f, 5.8f,
+                              lview.m, proj.m, rview.m, proj.m,
+                              -0.78f, 1.55f, 4.15f,
+                               0.72f, 1.58f, 4.05f, -0.18f, 0.10f, -0.97f,
+                              1, 0.35f, 0.65f, 0.0f,
+                              1, 1);
+        RtsXrFrameState xr;
+        rts_webxr_get_latest_state(&xr);
+        rts_input_begin_frame(&app->input);
+        rts_input_update_xr(&app->input, &xr);
+
+        rts_renderer_render_webxr_stereo(&app->renderer, &app->world, &app->input, &xr, 2.2f);
+        SDL_GL_SwapWindow(app->window);
+        rts_renderer_render_webxr_stereo(&app->renderer, &app->world, &app->input, &xr, 2.2f);
+
+        char out_path[512];
+        snprintf(out_path, sizeof(out_path), "%s/m013_01_webxr_6dof_wristpad_vignette.png", cfg->milestone_013_dir);
+        if (!rts_renderer_capture_png(&app->renderer, out_path)) {
+            fprintf(stderr, "[milestone_013] Failed to write %s\n", out_path);
+            rc = 1;
+        } else {
+            printf("[milestone_013] Saved %s\n", out_path);
+        }
+        SDL_GL_SwapWindow(app->window);
+        rts_webxr_on_session_state(0);
+    }
+
+    /* Shot 2: Adaptive Mobile Touch + 2-Finger Pinch/Orbit Holo-Globe HUD */
+    {
+        rts_input_set_mode_override(&app->input, true, RTS_INPUT_MOBILE_TOUCH);
+        rts_input_on_touch_down(&app->input, 11, 0.14f, 0.78f);
+        rts_input_on_touch_move(&app->input, 11, 0.21f, 0.71f);
+        rts_web_on_pinch_gesture(0.32f, 0.12f, 1);
+        float d = 0.0f, a = 0.0f;
+        bool act = false;
+        if (rts_web_consume_pinch(&d, &a, &act)) {
+            rts_input_on_pinch_rotate(&app->input, d, a, act);
+        }
+        rts_web_on_pinch_gesture(0.54f, 0.42f, 1);
+        if (rts_web_consume_pinch(&d, &a, &act)) {
+            rts_input_on_pinch_rotate(&app->input, d, a, act);
+        }
+        rts_hologlobe_zoom(&app->holo, app->input.intent.holo_zoom_delta);
+        rts_hologlobe_orbit_drag(&app->holo, app->input.intent.holo_orbit_dx, 0.0f);
+
+        rts_renderer_render_scene(&app->renderer, &app->world, &app->input, RTS_SCENE_MOBILE_TOUCH_HUD, 2.8f);
+        SDL_GL_SwapWindow(app->window);
+        rts_renderer_render_scene(&app->renderer, &app->world, &app->input, RTS_SCENE_MOBILE_TOUCH_HUD, 2.8f);
+
+        char out_path[512];
+        snprintf(out_path, sizeof(out_path), "%s/m013_02_mobile_adaptive_pinch_hud.png", cfg->milestone_013_dir);
+        if (!rts_renderer_capture_png(&app->renderer, out_path)) {
+            fprintf(stderr, "[milestone_013] Failed to write %s\n", out_path);
+            rc = 1;
+        } else {
+            printf("[milestone_013] Saved %s\n", out_path);
+        }
+        SDL_GL_SwapWindow(app->window);
+        rts_input_set_mode_override(&app->input, false, RTS_INPUT_DESKTOP_KBM);
+    }
+
+    RtsGfxStats st = app->renderer.gfx.get_stats(app->renderer.gfx.state);
+    printf("[milestone_013] OpenGL draw calls: %u, screenshots: %u, gl_errors: %u\n",
+           st.draw_calls, st.screenshots_saved, st.gl_errors);
+    if (st.gl_errors != 0u) {
+        fprintf(stderr, "[milestone_013] FAIL: OpenGL reported %u errors\n", st.gl_errors);
         rc = 1;
     }
 

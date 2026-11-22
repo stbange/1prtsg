@@ -5,6 +5,7 @@
 #include "rts/interior_gen.h"
 #include "rts/lua_vm.h"
 #include "rts/planet_mesh.h"
+#include "rts/platform.h"
 #include "rts/vehicle_physics.h"
 #include "lauxlib.h"
 #include "lua.h"
@@ -486,6 +487,43 @@ static int l_input_simulate_webxr(lua_State *L) {
     lua_pushboolean(L, hit);
     lua_pushboolean(L, vm->input->intent.holo_select_pressed);
     return 3;
+}
+
+static int l_input_test_6dof_pinch(lua_State *L) {
+    RtsInputRouter tmp;
+    rts_input_init(&tmp, 1280.0f, 720.0f, false);
+    RtsMat4f proj = rts_mat4_perspective((float)(68.0 * RTS_DEG2RAD), 1.0f, 0.1f, 1000.0f);
+    RtsMat4f lv = rts_mat4_look_at((RtsVec3f){-0.032f, 2.0f, 5.0f}, (RtsVec3f){0, 1.8f, 0}, (RtsVec3f){0, 1, 0});
+    RtsMat4f rv = rts_mat4_look_at((RtsVec3f){ 0.032f, 2.0f, 5.0f}, (RtsVec3f){0, 1.8f, 0}, (RtsVec3f){0, 1, 0});
+
+    rts_webxr_on_session_state(1);
+    rts_webxr_submit_pose(0.0f, 1.7f, 5.0f, lv.m, proj.m, rv.m, proj.m,
+                          -0.55f, 1.4f, 4.1f, 0.55f, 1.4f, 4.1f, 0.0f, 0.0f, -1.0f,
+                          1, 0.2f, 0.5f, 0.85f, 1, 1);
+    RtsXrFrameState xr;
+    bool xr_ok = rts_webxr_get_latest_state(&xr) && xr.has_eye_matrices && xr.comfort_vignette;
+    rts_input_begin_frame(&tmp);
+    rts_input_update_xr(&tmp, &xr);
+    float snap = tmp.intent.look_dx;
+    rts_webxr_on_session_state(0);
+
+    rts_input_begin_frame(&tmp);
+    rts_web_on_pinch_gesture(0.28f, 0.10f, 1);
+    float d = 0.0f, a = 0.0f;
+    bool act = false;
+    if (rts_web_consume_pinch(&d, &a, &act)) rts_input_on_pinch_rotate(&tmp, d, a, act);
+    rts_web_on_pinch_gesture(0.55f, 0.45f, 1);
+    if (rts_web_consume_pinch(&d, &a, &act)) rts_input_on_pinch_rotate(&tmp, d, a, act);
+    float pz = tmp.intent.holo_zoom_delta;
+    float po = tmp.intent.holo_orbit_dx;
+    rts_web_on_pinch_gesture(0.0f, 0.0f, 0);
+    rts_web_consume_pinch(&d, &a, &act);
+
+    lua_pushboolean(L, xr_ok ? 1 : 0);
+    lua_pushnumber(L, snap);
+    lua_pushnumber(L, pz);
+    lua_pushnumber(L, po);
+    return 4;
 }
 
 /* --- engine.voxel --- */
@@ -1019,6 +1057,7 @@ bool rts_lua_init(RtsLuaVm *vm, RtsVfs *vfs, RtsWorld *world, RtsInputRouter *in
     static const luaL_Reg input_funcs[] = {
         {"simulate_touch", l_input_simulate_touch},
         {"simulate_webxr", l_input_simulate_webxr},
+        {"test_6dof_pinch", l_input_test_6dof_pinch},
         {NULL, NULL}
     };
     static const luaL_Reg voxel_funcs[] = {

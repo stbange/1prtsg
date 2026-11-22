@@ -219,4 +219,9 @@ expect(esc_sc ~= nil and esc_sc.flagship_id > 0, "Scenario 26: Failed to launch 
 local md = engine.boarding.get_meltdown(esc_sc.flagship_id)
 expect(md ~= nil and md.active and md.countdown_s >= 55.0, "Scenario 26: Escape the Flagship 60s reactor meltdown failed to arm")
 
-print("[Automated Game Tests] ALL 26 END-TO-END SCENARIOS PASSED!")
+-- Scenario 27: True 6-DOF WebXR Eye Pose Bridge, Snap-Turn Comfort & 2-Finger Pinch-Rotate Holo-Globe
+local xr_ok, xr_snap, pinch_zoom, pinch_orbit = engine.input.test_6dof_pinch()
+expect(xr_ok and xr_snap > 0.4 and pinch_zoom > 0.5 and pinch_orbit > 0.5,
+       "Scenario 27: 6-DOF WebXR pose / snap-turn or 2-finger pinch-rotate bridge failed")
+
+print("[Automated Game Tests] ALL 27 END-TO-END SCENARIOS PASSED!")

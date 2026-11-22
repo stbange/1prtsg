@@ -187,6 +187,7 @@ add_library(rts_core STATIC
     src/vehicle_physics.c
     src/combat_sim.c
     src/ui_menus.c
+    src/platform_webxr.c
     src/world.c
     src/voxel.c
     src/input.c
@@ -228,7 +229,6 @@ add_library(rts_platform STATIC
     src/gfx_gl.c
     src/audio_sdl3.c
     src/platform_sdl.c
-    src/platform_webxr.c
 )
 target_include_directories(rts_platform PUBLIC "${CMAKE_SOURCE_DIR}/include")
 target_link_libraries(rts_platform PUBLIC rts_core SDL3::SDL3-static)
@@ -265,8 +265,8 @@ if(EMSCRIPTEN)
         "-sALLOW_MEMORY_GROWTH=1"
         "-sFORCE_FILESYSTEM=1"
         "-sNO_EXIT_RUNTIME=1"
-        "-sEXPORTED_FUNCTIONS=['_main','_rts_web_notify_touch_device','_rts_web_is_touch_device','_rts_webxr_on_session_state','_rts_webxr_on_frame']"
-        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','callMain']"
+        "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_rts_web_notify_touch_device','_rts_web_is_touch_device','_rts_web_on_pinch_gesture','_rts_webxr_on_session_state','_rts_webxr_on_frame','_rts_webxr_submit_pose']"
+        "-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','FS','callMain','HEAPF32']"
     )
 endif()
 
@@ -286,6 +286,7 @@ if(BUILD_TESTING AND NOT EMSCRIPTEN)
         tests/test_rts_toolkit.c
         tests/test_planet_physics_combat.c
         tests/test_skirmish_menus.c
+        tests/test_webxr_mobile.c
         tests/test_world.c
         tests/test_voxel.c
         tests/test_input.c

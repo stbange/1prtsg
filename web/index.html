@@ -110,6 +110,7 @@
   </div>
 
   <div id="toolbar">
+    <button class="tb-btn accent" id="btn-menu" title="Open Solaris Main / Pause Menu (Key Esc)">Menu [Esc]</button>
     <button class="tb-btn accent" id="btn-tactical" title="Live Solaris Tactical Defense (Key L)">Tactical [L]</button>
     <button class="tb-btn accent" id="btn-sandbox" title="Seamless Planetary-to-Orbital Sandbox RTS & Explorable Mega-Interiors (Key M)">Sandbox RTS [M]</button>
     <button class="tb-btn" id="btn-wrist" title="Toggle 4-Tab Diegetic Tactical Wrist-Pad (Key Tab)">Wrist-Pad [Tab]</button>
@@ -117,6 +118,8 @@
     <button class="tb-btn" id="btn-radial" title="Open 7-Order Radial Quick Command Wheel (Key V / Right-Click)">Radial [V]</button>
     <button class="tb-btn" id="btn-ship" title="Cycle Explorable Megaships: Citadel 72rm -> Dropship -> Carrier 150rm -> Dreadnought 420rm -> Shipyard 420rm (Key N)">Next Ship [N]</button>
     <button class="tb-btn" id="btn-lift" title="Ride Turbolift Up One Deck (Keys [ and ])">Deck Lift []]</button>
+    <button class="tb-btn" id="btn-board" title="Board Nearest Construct or Step Out EVA (Key B)">Board/EVA [B]</button>
+    <button class="tb-btn" id="btn-warp" title="Cycle Safe Single-Player Time Compression 1x/2x/4x/8x (Key .)">Warp [.]</button>
     <button class="tb-btn" id="btn-alert" title="Toggle Red Alert: Engineer Damage Control & Marine vs Breacher Defense (Key F)">Red Alert [F]</button>
     <button class="tb-btn" id="btn-catalog" title="Cycle all 6 Construct Classes / 76 Unique 3D Models (Key C)">76-Unit Catalog [C]</button>
     <button class="tb-btn" id="btn-touch">Touch HUD</button>
@@ -127,11 +130,11 @@
 
   <div id="help-card">
     <h3>1stPRTS COMMAND CONTROLS</h3>
-    <div><kbd>Click Canvas</kbd> Lock Mouse 360&deg; Look (<kbd>Esc</kbd> unlocks) &nbsp;|&nbsp; <kbd>WASD</kbd> Walk / Pilot</div>
+    <div><kbd>Esc</kbd> Solaris Main / Pause Menu &amp; 5-Slot Saves &nbsp;|&nbsp; <kbd>Click Canvas</kbd> Lock Mouse 360&deg; Look &nbsp;|&nbsp; <kbd>WASD</kbd> Walk / Pilot</div>
     <div><b>Tactical Defense (<kbd>L</kbd>):</b> <kbd>LMB</kbd>/<kbd>J</kbd> Plasma Lance · <kbd>Q</kbd> EMP Pulse (x2.4 Crit) · <kbd>Shift</kbd> Dash · <kbd>F</kbd> Fleet Strike · <kbd>H</kbd> Repair · <kbd>R</kbd> Retry</div>
-    <div><b>Tier 1/2/3 Interactive RTS Toolkit (<kbd>M</kbd>):</b> <kbd>Tab</kbd> 4-Tab Tactical Wrist-Pad (<kbd>1-4</kbd> Tabs) · <kbd>Z</kbd> 4x/12x Optical Binoculars &amp; Laser Designator (<kbd>LMB</kbd> Paint/Strike) · <kbd>V</kbd>/<kbd>RMB</kbd> 7-Order Radial Wheel · <kbd>E</kbd> 3D Holo-Globe (<kbd>1-7</kbd> Orders, <kbd>X</kbd> 3D Building Ghost, <kbd>Q</kbd>/<kbd>R</kbd> Zoom, <kbd>LMB</kbd> Pick/Confirm) or Facility Terminal (<kbd>1-6</kbd> 1:1 Gantry Assembly)</div>
-    <div><b>Explorable Mega-Interiors (1–420 Rooms):</b> <kbd>N</kbd> Cycle Megaships · <kbd>[</kbd>/<kbd>]</kbd> Ride Turbolift · <kbd>F</kbd> Red Alert · <kbd>B</kbd> Board/EVA · <kbd>G</kbd> 400km LEO Orbit · <kbd>F5</kbd>/<kbd>F9</kbd> Save/Load</div>
-    <div><b>76-Unit 3D Catalog (<kbd>C</kbd>):</b> Cycle all 6 classes &nbsp;|&nbsp; <b>Showcase:</b> Keys <kbd>1</kbd>–<kbd>9</kbd></div>
+    <div><b>Tier 1/2/3 Interactive RTS Toolkit (<kbd>M</kbd>):</b> <kbd>Tab</kbd> 4-Tab Wrist-Pad · <kbd>Z</kbd> Optics/Laser (<kbd>LMB</kbd> Strike) · <kbd>V</kbd>/<kbd>RMB</kbd> 7-Order Radial Wheel · <kbd>E</kbd> 3D Holo-Globe (<kbd>1-7</kbd> Orders, <kbd>X</kbd> Building Ghost, 2-Finger Pinch/Rotate on Mobile) or Facility Terminal (<kbd>1-6</kbd> 1:1 Gantry)</div>
+    <div><b>Explorable Mega-Interiors &amp; 6-Class Physics:</b> <kbd>N</kbd> Cycle Megaships · <kbd>[</kbd>/<kbd>]</kbd> Turbolift · <kbd>K</kbd> Dropship Cargo Clamp · <kbd>.</kbd> Time Compression (1x–8x) · <kbd>F</kbd> Red Alert · <kbd>B</kbd> Board/EVA · <kbd>G</kbd> 400km LEO Orbit</div>
+    <div><b>76-Unit 3D Catalog (<kbd>C</kbd>):</b> Cycle all 6 classes &nbsp;|&nbsp; <b>WebXR 6-DOF VR:</b> True XRViewerPose eye matrices, Left-Hand 3D Wrist-Pad &amp; Right-Hand Laser Selector</div>
   </div>
 
   <div id="status">Initializing WebAssembly &amp; loose external manifest...</div>
@@ -196,6 +199,10 @@
       setTimeout(() => window.dispatchEvent(new KeyboardEvent('keyup', opts)), 45);
     }
 
+    document.getElementById('btn-menu').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('Escape', 'Escape', 27);
+    });
     document.getElementById('btn-tactical').addEventListener('click', (e) => {
       e.currentTarget.blur();
       sendSyntheticKey('l', 'KeyL', 76);
@@ -223,6 +230,14 @@
     document.getElementById('btn-lift').addEventListener('click', (e) => {
       e.currentTarget.blur();
       sendSyntheticKey(']', 'BracketRight', 221);
+    });
+    document.getElementById('btn-board').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('b', 'KeyB', 66);
+    });
+    document.getElementById('btn-warp').addEventListener('click', (e) => {
+      e.currentTarget.blur();
+      sendSyntheticKey('.', 'Period', 190);
     });
     document.getElementById('btn-alert').addEventListener('click', (e) => {
       e.currentTarget.blur();

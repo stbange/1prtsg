@@ -168,6 +168,10 @@ void rts_input_on_touch_up(RtsInputRouter *r, int64_t finger_id) {
 }
 
 void rts_input_on_pinch(RtsInputRouter *r, float dist_norm, bool active) {
+    rts_input_on_pinch_rotate(r, dist_norm, 0.0f, active);
+}
+
+void rts_input_on_pinch_rotate(RtsInputRouter *r, float dist_norm, float angle_rad, bool active) {
     if (!r) return;
     if (!active) {
         r->pinch_active = false;
@@ -176,10 +180,13 @@ void rts_input_on_pinch(RtsInputRouter *r, float dist_norm, bool active) {
     if (!r->pinch_active) {
         r->pinch_active = true;
         r->pinch_last_dist = dist_norm;
+        r->pinch_last_angle = angle_rad;
         return;
     }
     r->intent.holo_zoom_delta += (dist_norm - r->pinch_last_dist) * 4.0f;
+    r->intent.holo_orbit_dx += (angle_rad - r->pinch_last_angle) * 2.5f;
     r->pinch_last_dist = dist_norm;
+    r->pinch_last_angle = angle_rad;
 }
 
 void rts_input_update_xr(RtsInputRouter *r, const RtsXrFrameState *xr) {
@@ -189,7 +196,19 @@ void rts_input_update_xr(RtsInputRouter *r, const RtsXrFrameState *xr) {
         r->mode = RTS_INPUT_WEBXR;
         r->intent.move_x = rts_clampf(xr->left_stick_x, -1.0f, 1.0f);
         r->intent.move_y = rts_clampf(xr->left_stick_y, -1.0f, 1.0f);
-        r->intent.look_dx = xr->right_stick_x * 0.05f;
+        if (xr->snap_turn_deg > 1.0f) {
+            if (fabsf(xr->right_stick_x) > 0.65f) {
+                if (!r->xr_snap_latched) {
+                    float dir = (xr->right_stick_x > 0.0f) ? 1.0f : -1.0f;
+                    r->intent.look_dx = dir * (float)((double)xr->snap_turn_deg * RTS_DEG2RAD);
+                    r->xr_snap_latched = true;
+                }
+            } else {
+                r->xr_snap_latched = false;
+            }
+        } else {
+            r->intent.look_dx = xr->right_stick_x * 0.05f;
+        }
         r->intent.aim_ray = xr->right_aim_ray;
         r->intent.has_aim_ray = true;
         r->intent.holo_select_pressed = xr->right_trigger_pressed;

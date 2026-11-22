@@ -145,6 +145,8 @@ int main(int argc, char **argv) {
             cfg.milestone_011_dir = argv[++i];
         } else if (strcmp(argv[i], "--capture-milestone-012") == 0 && i + 1 < argc) {
             cfg.milestone_012_dir = argv[++i];
+        } else if (strcmp(argv[i], "--capture-milestone-013") == 0 && i + 1 < argc) {
+            cfg.milestone_013_dir = argv[++i];
         } else if (strcmp(argv[i], "--capture-fun-frames") == 0 && i + 1 < argc) {
             cfg.fun_frames_dir = argv[++i];
         } else if (strcmp(argv[i], "--min-lua-coverage") == 0 && i + 1 < argc) {
@@ -161,6 +163,9 @@ int main(int argc, char **argv) {
     }
     if (cfg.headless) {
         return run_headless(&cfg);
+    }
+    if (cfg.milestone_013_dir) {
+        return rts_platform_capture_milestone_013(&cfg);
     }
     if (cfg.milestone_012_dir) {
         return rts_platform_capture_milestone_012(&cfg);
