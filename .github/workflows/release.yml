@@ -30,7 +30,7 @@ jobs:
           mkdir -p dist/1prtsg
           cp build/rel/1prtsg dist/1prtsg/
           cp -r assets scripts config mods dist/1prtsg/
-          cp manifest.json README.md LICENSE-CODE LICENSE-ASSETS THIRD_PARTY_NOTICES.md dist/1prtsg/
+          cp manifest.json README.md LICENSE LICENSE-CODE LICENSE-ART THIRD_PARTY_NOTICES.md dist/1prtsg/
           (cd dist/1prtsg && ./1prtsg --headless --data-dir . --test-script tests/game/run_all.lua)
           tar -C dist -czf 1prtsg-linux-x64.tar.gz 1prtsg
       - uses: actions/upload-artifact@v4
@@ -53,7 +53,7 @@ jobs:
           mkdir -p dist/1prtsg
           cp build/rel/1prtsg dist/1prtsg/
           cp -r assets scripts config mods dist/1prtsg/
-          cp manifest.json README.md LICENSE-CODE LICENSE-ASSETS THIRD_PARTY_NOTICES.md dist/1prtsg/
+          cp manifest.json README.md LICENSE LICENSE-CODE LICENSE-ART THIRD_PARTY_NOTICES.md dist/1prtsg/
           (cd dist/1prtsg && ./1prtsg --headless --data-dir . --test-script tests/game/run_all.lua)
           tar -C dist -czf 1prtsg-macos-arm64.tar.gz 1prtsg
       - uses: actions/upload-artifact@v4
@@ -77,7 +77,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist/1prtsg | Out-Null
           Copy-Item build/rel/Release/1prtsg.exe dist/1prtsg/
           Copy-Item -Recurse assets, scripts, config, mods dist/1prtsg/
-          Copy-Item manifest.json, README.md, LICENSE-CODE, LICENSE-ASSETS, THIRD_PARTY_NOTICES.md dist/1prtsg/
+          Copy-Item manifest.json, README.md, LICENSE, LICENSE-CODE, LICENSE-ART, THIRD_PARTY_NOTICES.md dist/1prtsg/
           Push-Location dist/1prtsg
           ./1prtsg.exe --headless --data-dir . --test-script tests/game/run_all.lua
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "rts/world.h"
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 void rts_world_init(RtsWorld *w, RtsPlanetConfig planet, uint64_t rng_seed) {
@@ -106,8 +107,8 @@ uint32_t rts_world_spawn_from_blueprint(RtsWorld *w, const char *blueprint_id, c
     RtsEntity *e = &w->entities[w->entity_count];
     memset(e, 0, sizeof(*e));
     e->id = w->next_entity_id++;
-    strncpy(e->blueprint_id, bp->id, sizeof(e->blueprint_id) - 1);
-    strncpy(e->name, custom_name ? custom_name : bp->name, sizeof(e->name) - 1);
+    snprintf(e->blueprint_id, sizeof(e->blueprint_id), "%.63s", bp->id);
+    snprintf(e->name, sizeof(e->name), "%.95s", custom_name ? custom_name : bp->name);
     e->construct_class = bp->construct_class;
     e->faction_id = faction_id;
     e->host_frame_id = host_frame != RTS_FRAME_INVALID ? host_frame : w->planet_frame_id;

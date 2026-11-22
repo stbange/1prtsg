@@ -53,8 +53,8 @@ static void mm_try_add_folder(RtsModCatalog *cat, const RtsVfs *vfs, const char 
 
     RtsModCatalogEntry *e = &cat->entries[cat->count];
     memset(e, 0, sizeof(*e));
-    snprintf(e->id, sizeof(e->id), "%s", folder);
-    snprintf(e->name, sizeof(e->name), "%s", folder);
+    snprintf(e->id, sizeof(e->id), "%.63s", folder);
+    snprintf(e->name, sizeof(e->name), "%.95s", folder);
     snprintf(e->version, sizeof(e->version), "1.0.0");
     snprintf(e->description, sizeof(e->description), "External loose VFS mod.");
     mm_extract_json((const char *)buf, "id", e->id, sizeof(e->id));

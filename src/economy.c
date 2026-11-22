@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #include "rts/economy.h"
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 void rts_economy_init(RtsEconomySystem *eco) {
@@ -60,7 +61,7 @@ uint32_t rts_economy_queue_build(RtsEconomySystem *eco, const RtsWorld *w, uint3
     j->id = eco->next_job_id++;
     j->producer_entity_id = producer_entity_id;
     j->faction_id = prod->faction_id;
-    strncpy(j->blueprint_id, bp->id, sizeof(j->blueprint_id) - 1);
+    snprintf(j->blueprint_id, sizeof(j->blueprint_id), "%.63s", bp->id);
     j->total_time_s = build_s;
     j->remaining_s = build_s;
     j->active = true;
